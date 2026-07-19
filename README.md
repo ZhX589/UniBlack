@@ -67,6 +67,8 @@ PR
 ↓  
 merge main  
 ↓  
+删除原分支
+↓  
 Tag
 
 > [!IMPORTANT] 注意：
