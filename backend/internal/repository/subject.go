@@ -46,13 +46,13 @@ func (r *SubjectRepository) GetSubjectByID(ctx context.Context, id string) (*mod
 	return &subject, nil
 }
 
-// GetSubjectByIdentifier retrieves a subject by identifier type and value
-func (r *SubjectRepository) GetSubjectByIdentifier(ctx context.Context, idType, value string) (*models.Subject, error) {
+// GetSubjectByIdentifier retrieves a subject by platform and value
+func (r *SubjectRepository) GetSubjectByIdentifier(ctx context.Context, platform, value string) (*models.Subject, error) {
 	var subject models.Subject
 	err := r.db.WithContext(ctx).
 		Preload("Identifiers").
 		Joins("JOIN identifiers ON identifiers.subject_id = subjects.id").
-		Where("identifiers.type = ? AND identifiers.value = ?", idType, value).
+		Where("identifiers.platform = ? AND identifiers.value = ?", platform, value).
 		First(&subject).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -120,7 +120,7 @@ func (r *SubjectRepository) AddIdentifier(ctx context.Context, identifier *model
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Identifier{}).
-		Where("type = ? AND value = ?", identifier.Type, identifier.Value).
+		Where("platform = ? AND value = ?", identifier.Platform, identifier.Value).
 		Count(&count).Error
 	if err != nil {
 		return err

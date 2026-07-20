@@ -52,14 +52,14 @@ func (h *SubjectHandler) GetSubject(c echo.Context) error {
 
 // GetSubjectByIdentifier retrieves a subject by identifier
 func (h *SubjectHandler) GetSubjectByIdentifier(c echo.Context) error {
-	idType := c.QueryParam("type")
+	platform := c.QueryParam("platform")
 	value := c.QueryParam("value")
 
-	if idType == "" || value == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "type and value are required"})
+	if platform == "" || value == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "platform and value are required"})
 	}
 
-	subject, err := h.subjectService.GetSubjectByIdentifier(c.Request().Context(), idType, value)
+	subject, err := h.subjectService.GetSubjectByIdentifier(c.Request().Context(), platform, value)
 	if err != nil {
 		if err == service.ErrSubjectNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "subject not found"})

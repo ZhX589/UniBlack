@@ -119,18 +119,49 @@ RBAC 角色。
 
 ### 8. Identifier (标识符)
 
-Subject 的各种标识符，支持多种类型。
+Subject 的社交账号/联系方式，支持国内外主流平台。
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | id | UUID | 主键 |
 | subject_id | UUID | 外键 → Subject |
-| type | VARCHAR(50) | 类型（qq/discord/telegram/minecraft_uuid/steam/email/phone/ip） |
-| value | VARCHAR(255) | 标识符值 |
+| platform | VARCHAR(50) | 平台（见下方平台列表） |
+| account_type | VARCHAR(50) | 账号类型（username/nickname/id/phone/other） |
+| value | VARCHAR(255) | 账号值 |
+| label | VARCHAR(100) | 自定义标签（当 platform=custom 时使用） |
 | is_primary | BOOLEAN | 是否主要标识符 |
 | created_at | TIMESTAMP | 创建时间 |
 
-**约束**: (type, value) 唯一
+**平台列表**：
+
+| 平台代码 | 说明 | 地区 |
+|----------|------|------|
+| qq | QQ | 国内 |
+| wechat | 微信 | 国内 |
+| bilibili | B站 | 国内 |
+| douyin | 抖音 | 国内 |
+| kuaishou | 快手 | 国内 |
+| weibo | 微博 | 国内 |
+| phone | 手机号 | 通用 |
+| email | 邮箱 | 通用 |
+| x | X (Twitter) | 国际 |
+| telegram | Telegram | 国际 |
+| discord | Discord | 国际 |
+| steam | Steam | 国际 |
+| minecraft | Minecraft | 国际 |
+| custom | 自定义 | 通用 |
+
+**账号类型**：
+
+| 类型 | 说明 |
+|------|------|
+| username | 用户名 |
+| nickname | 昵称 |
+| id | ID/UID |
+| phone | 手机号 |
+| other | 其他 |
+
+**约束**: (platform, value) 唯一
 
 ### 9. Case (案件)
 

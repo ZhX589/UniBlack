@@ -73,12 +73,14 @@ type Subject struct {
 
 // Identifier represents a subject identifier (QQ, Discord, etc.)
 type Identifier struct {
-	ID        string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	SubjectID string    `gorm:"type:uuid;not null" json:"subject_id"`
-	Type      string    `gorm:"type:varchar(50);not null" json:"type"`
-	Value     string    `gorm:"type:varchar(255);not null" json:"value"`
-	IsPrimary bool      `gorm:"default:false" json:"is_primary"`
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID          string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	SubjectID   string    `gorm:"type:uuid;not null" json:"subject_id"`
+	Platform    string    `gorm:"type:varchar(50);not null" json:"platform"`
+	AccountType string    `gorm:"type:varchar(50);not null;default:'username'" json:"account_type"`
+	Value       string    `gorm:"type:varchar(255);not null" json:"value"`
+	Label       *string   `gorm:"type:varchar(100)" json:"label,omitempty"`
+	IsPrimary   bool      `gorm:"default:false" json:"is_primary"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 // Case represents a blacklist case

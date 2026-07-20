@@ -33,9 +33,11 @@ type CreateSubjectRequest struct {
 
 // IdentifierRequest represents an identifier request
 type IdentifierRequest struct {
-	Type      string `json:"type" validate:"required"`
-	Value     string `json:"value" validate:"required"`
-	IsPrimary bool   `json:"is_primary"`
+	Platform    string `json:"platform" validate:"required"`
+	AccountType string `json:"account_type" validate:"required"`
+	Value       string `json:"value" validate:"required"`
+	Label       string `json:"label"`
+	IsPrimary   bool   `json:"is_primary"`
 }
 
 // UpdateSubjectRequest represents a subject update request
@@ -63,10 +65,14 @@ func (s *SubjectService) CreateSubject(ctx context.Context, req CreateSubjectReq
 	// Add identifiers
 	for _, idReq := range req.Identifiers {
 		identifier := &models.Identifier{
-			SubjectID: subject.ID,
-			Type:      idReq.Type,
-			Value:     idReq.Value,
-			IsPrimary: idReq.IsPrimary,
+			SubjectID:   subject.ID,
+			Platform:    idReq.Platform,
+			AccountType: idReq.AccountType,
+			Value:       idReq.Value,
+			IsPrimary:   idReq.IsPrimary,
+		}
+		if idReq.Label != "" {
+			identifier.Label = &idReq.Label
 		}
 		if err := s.subjectRepo.AddIdentifier(ctx, identifier); err != nil {
 			// Log error but continue
@@ -84,8 +90,8 @@ func (s *SubjectService) GetSubject(ctx context.Context, id string) (*models.Sub
 }
 
 // GetSubjectByIdentifier retrieves a subject by identifier
-func (s *SubjectService) GetSubjectByIdentifier(ctx context.Context, idType, value string) (*models.Subject, error) {
-	return s.subjectRepo.GetSubjectByIdentifier(ctx, idType, value)
+func (s *SubjectService) GetSubjectByIdentifier(ctx context.Context, platform, value string) (*models.Subject, error) {
+	return s.subjectRepo.GetSubjectByIdentifier(ctx, platform, value)
 }
 
 // ListSubjects lists subjects with pagination
@@ -146,10 +152,14 @@ func (s *SubjectService) AddIdentifier(ctx context.Context, subjectID string, re
 	}
 
 	identifier := &models.Identifier{
-		SubjectID: subjectID,
-		Type:      req.Type,
-		Value:     req.Value,
-		IsPrimary: req.IsPrimary,
+		SubjectID:   subjectID,
+		Platform:    req.Platform,
+		AccountType: req.AccountType,
+		Value:       req.Value,
+		IsPrimary:   req.IsPrimary,
+	}
+	if req.Label != "" {
+		identifier.Label = &req.Label
 	}
 
 	if err := s.subjectRepo.AddIdentifier(ctx, identifier); err != nil {
