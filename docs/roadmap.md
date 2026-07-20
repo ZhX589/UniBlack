@@ -561,17 +561,17 @@ API 应建立在稳定的数据模型之上。
 | updated_by | UUID | 最后修改者 |
 | updated_at | TIMESTAMP | 最后修改时间 |
 
-**默认配置键**：
-- `site.name` - 项目名称
-- `site.description` - 项目描述
-- `site.theme_color` - 主题色
+**默认配置键（扁平 key，值为 JSON 标量）**：
+- `site.name` / `site.description` / `site.theme_color` / `site.logo_url` / `site.contact_email`
 - `security.email_verification` - 邮箱验证开关
-- `security.captcha_provider` - 人机验证提供商
-- `security.captcha_config` - 人机验证配置
-- `security.smtp_config` - SMTP 配置
-- `security.rate_limit` - API 限速配置
+- `security.smtp_host` / `smtp_port` / `smtp_username` / `smtp_password` / `smtp_from` - SMTP
+- `security.captcha_enabled` / `captcha_provider` / `captcha_site_key` / `captcha_secret_key` - 人机验证（turnstile|recaptcha|hcaptcha|none）
+- `security.rate_limit_public` / `security.rate_limit_auth` - 限速
 - `auth.registration_enabled` - 注册开关
-- `auth.oauth_config` - OAuth 配置
+- `auth.oauth_github_*` - OAuth 预留
+- `system.initialized` - 是否完成首次初始化
+
+**验证码存储**：表 `verification_codes`（email + purpose + code + expires_at）
 
 ### access_lists 表（白名单/黑名单）
 | 字段 | 类型 | 说明 |
@@ -595,6 +595,36 @@ API 应建立在稳定的数据模型之上。
 - 开发环境使用默认密码 admin123
 - 用户管理功能正常
 - 白名单/黑名单功能正常
+- 前端 `/subjects/:id`、`/cases/:id` 可打开详情（公开案件仅 approved/closed）
+- 注册页不在 settings 加载完成前误显示「注册已关闭」
+
+## Status
+
+- **实现中（2026-07）**：控制台 + 注册增强 + 可插拔 captcha/mailer + 对象/案件详情页
+
+---
+
+# Phase 11.1 - UX / 可配置安全补丁
+
+## Why
+
+Phase 11 落地后发现：详情路由缺失导致 404；注册页 settings 未加载时闪现「已关闭」；邮箱/人机验证仅有开关未真正对接可配置 Provider。
+
+## Goal
+
+- 补齐 Subject / Case 前端详情页
+- 注册页 loading 态与配置驱动的 captcha 组件
+- `internal/captcha`、`internal/mailer` 可插拔实现
+- `verification_codes` 迁移与发送/校验接口
+- 控制台展示 SMTP / captcha secret（脱敏）配置项
+
+## Verification
+
+- 列表链到 `/subjects/:id` 可打开
+- 公开案件链到 `/cases/:id`；pending 案件返回明确未公开提示
+- 注册页先显示「加载注册配置」
+- 开启邮箱验证后发送验证码可写入 DB（SMTP 未配时走 LogMailer）
+- 开启 captcha 且配置 secret 后校验走对应 Provider
 
 ---
 

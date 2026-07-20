@@ -1,6 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { settingBool, settingString } from '@/lib/settings'
+
+declare global {
+  interface Window {
+    turnstile?: { render: (el: HTMLElement, opts: Record<string, unknown>) => string }
+    grecaptcha?: { render: (el: HTMLElement, opts: Record<string, unknown>) => number; getResponse: (id?: number) => string }
+    hcaptcha?: { render: (el: HTMLElement, opts: Record<string, unknown>) => string; getResponse: (id?: string) => string }
+  }
+}
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -11,46 +20,134 @@ export default function RegisterPage() {
     verificationCode: '',
     captchaToken: '',
   })
-  const [settings, setSettings] = useState<any>({})
+  const [settings, setSettings] = useState<Record<string, unknown> | null>(null)
+  const [settingsError, setSettingsError] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [codeSent, setCodeSent] = useState(false)
+  const captchaRef = useRef<HTMLDivElement>(null)
+  const captchaWidgetId = useRef<string | number | null>(null)
 
   useEffect(() => {
-    fetchSettings()
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch('/api/settings/public')
+        if (!res.ok) throw new Error('failed')
+        const data = await res.json()
+        if (!cancelled) setSettings(data)
+      } catch {
+        if (!cancelled) {
+          setSettingsError('无法加载注册配置，请确认后端已启动')
+          // fail-open for registration_enabled so we don't flash "closed"
+          setSettings({ 'auth.registration_enabled': true })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
-  const fetchSettings = async () => {
-    try {
-      const res = await fetch('/api/settings/public')
-      const data = await res.json()
-      setSettings(data)
-    } catch (error) {
-      console.error('Failed to fetch settings:', error)
+  const captchaEnabled = settings ? settingBool(settings, 'security.captcha_enabled') : false
+  const captchaProvider = settings ? settingString(settings, 'security.captcha_provider', 'turnstile') : 'turnstile'
+  const captchaSiteKey = settings ? settingString(settings, 'security.captcha_site_key') : ''
+  const emailVerification = settings ? settingBool(settings, 'security.email_verification') : false
+  const registrationEnabled = settings ? settingBool(settings, 'auth.registration_enabled', true) : true
+
+  useEffect(() => {
+    if (!settings || !captchaEnabled || !captchaSiteKey || !captchaRef.current) return
+    const el = captchaRef.current
+    el.innerHTML = ''
+    captchaWidgetId.current = null
+
+    const onToken = (token: string) => {
+      setFormData((prev) => ({ ...prev, captchaToken: token }))
     }
-  }
+
+    if (captchaProvider === 'turnstile') {
+      const scriptId = 'cf-turnstile-script'
+      const render = () => {
+        if (window.turnstile && captchaRef.current) {
+          captchaWidgetId.current = window.turnstile.render(captchaRef.current, {
+            sitekey: captchaSiteKey,
+            callback: onToken,
+          })
+        }
+      }
+      if (!document.getElementById(scriptId)) {
+        const s = document.createElement('script')
+        s.id = scriptId
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+        s.async = true
+        s.onload = render
+        document.body.appendChild(s)
+      } else {
+        render()
+      }
+    } else if (captchaProvider === 'recaptcha') {
+      const scriptId = 'recaptcha-script'
+      const render = () => {
+        if (window.grecaptcha && captchaRef.current) {
+          captchaWidgetId.current = window.grecaptcha.render(captchaRef.current, {
+            sitekey: captchaSiteKey,
+            callback: onToken,
+          })
+        }
+      }
+      if (!document.getElementById(scriptId)) {
+        const s = document.createElement('script')
+        s.id = scriptId
+        s.src = 'https://www.google.com/recaptcha/api.js?render=explicit'
+        s.async = true
+        s.onload = render
+        document.body.appendChild(s)
+      } else {
+        render()
+      }
+    } else if (captchaProvider === 'hcaptcha') {
+      const scriptId = 'hcaptcha-script'
+      const render = () => {
+        if (window.hcaptcha && captchaRef.current) {
+          captchaWidgetId.current = window.hcaptcha.render(captchaRef.current, {
+            sitekey: captchaSiteKey,
+            callback: onToken,
+          })
+        }
+      }
+      if (!document.getElementById(scriptId)) {
+        const s = document.createElement('script')
+        s.id = scriptId
+        s.src = 'https://js.hcaptcha.com/1/api.js?render=explicit'
+        s.async = true
+        s.onload = render
+        document.body.appendChild(s)
+      } else {
+        render()
+      }
+    }
+  }, [settings, captchaEnabled, captchaProvider, captchaSiteKey])
 
   const handleSendCode = async () => {
     if (!formData.email) {
       setError('请输入邮箱')
       return
     }
-
     try {
       const res = await fetch('/api/auth/send-verification-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: formData.email }),
       })
-
       if (res.ok) {
         setCodeSent(true)
         setError('')
       } else {
-        setError('发送验证码失败')
+        const data = await res.json().catch(() => ({}))
+        setError(data.error || '发送验证码失败')
       }
-    } catch (error) {
+    } catch {
       setError('发送验证码失败')
     }
   }
@@ -65,9 +162,28 @@ export default function RegisterPage() {
       setLoading(false)
       return
     }
-
     if (formData.password.length < 8) {
       setError('密码至少8位')
+      setLoading(false)
+      return
+    }
+
+    let captchaToken = formData.captchaToken
+    if (captchaEnabled) {
+      if (captchaProvider === 'recaptcha' && window.grecaptcha) {
+        captchaToken = window.grecaptcha.getResponse(captchaWidgetId.current as number) || captchaToken
+      }
+      if (captchaProvider === 'hcaptcha' && window.hcaptcha) {
+        captchaToken = window.hcaptcha.getResponse(String(captchaWidgetId.current ?? '')) || captchaToken
+      }
+      if (!captchaToken) {
+        setError('请完成人机验证')
+        setLoading(false)
+        return
+      }
+    }
+    if (emailVerification && !formData.verificationCode) {
+      setError('请填写邮箱验证码')
       setLoading(false)
       return
     }
@@ -81,30 +197,39 @@ export default function RegisterPage() {
           email: formData.email,
           password: formData.password,
           verification_code: formData.verificationCode,
-          captcha_token: formData.captchaToken,
+          captcha_token: captchaToken,
         }),
       })
-
       if (res.ok) {
         setSuccess(true)
       } else {
-        const data = await res.json()
+        const data = await res.json().catch(() => ({}))
         setError(data.error || '注册失败')
       }
-    } catch (error) {
+    } catch {
       setError('注册失败，请稍后重试')
     } finally {
       setLoading(false)
     }
   }
 
-  if (!settings['auth.registration_enabled']) {
+  if (settings === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-500">加载注册配置...</div>
+      </div>
+    )
+  }
+
+  if (!registrationEnabled) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full text-center">
           <h1 className="text-2xl font-bold mb-4">注册已关闭</h1>
           <p className="text-gray-600">系统暂不开放注册，请联系管理员。</p>
-          <a href="/login" className="text-blue-600 hover:underline mt-4 inline-block">返回登录</a>
+          <a href="/login" className="text-blue-600 hover:underline mt-4 inline-block">
+            返回登录
+          </a>
         </div>
       </div>
     )
@@ -117,7 +242,10 @@ export default function RegisterPage() {
           <div className="text-green-600 text-5xl mb-4">✓</div>
           <h1 className="text-2xl font-bold mb-4">注册成功</h1>
           <p className="text-gray-600 mb-4">您的账号已创建成功，请登录。</p>
-          <a href="/login" className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 inline-block">
+          <a
+            href="/login"
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 inline-block"
+          >
             去登录
           </a>
         </div>
@@ -129,12 +257,10 @@ export default function RegisterPage() {
     <div className="min-h-screen flex items-center justify-center py-8">
       <div className="bg-white rounded-lg shadow-md p-8 max-w-md w-full">
         <h1 className="text-2xl font-bold text-center mb-6">注册账号</h1>
-
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4">
-            {error}
-          </div>
+        {settingsError && (
+          <div className="bg-yellow-50 text-yellow-800 p-3 rounded-lg mb-4 text-sm">{settingsError}</div>
         )}
+        {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4">{error}</div>}
 
         <form onSubmit={handleRegister}>
           <div className="mb-4">
@@ -158,7 +284,7 @@ export default function RegisterPage() {
                 className="flex-1 border rounded-lg px-4 py-2"
                 required
               />
-              {settings['security.email_verification'] && (
+              {emailVerification && (
                 <button
                   type="button"
                   onClick={handleSendCode}
@@ -171,7 +297,7 @@ export default function RegisterPage() {
             </div>
           </div>
 
-          {settings['security.email_verification'] && codeSent && (
+          {emailVerification && (
             <div className="mb-4">
               <label className="block text-gray-700 mb-2">验证码</label>
               <input
@@ -179,7 +305,7 @@ export default function RegisterPage() {
                 value={formData.verificationCode}
                 onChange={(e) => setFormData({ ...formData, verificationCode: e.target.value })}
                 className="w-full border rounded-lg px-4 py-2"
-                placeholder="请输入6位验证码"
+                placeholder="请输入邮箱验证码"
               />
             </div>
           )}
@@ -207,11 +333,15 @@ export default function RegisterPage() {
             />
           </div>
 
-          {settings['security.captcha_enabled'] && (
+          {captchaEnabled && (
             <div className="mb-6">
-              <div className="border rounded-lg p-4 text-center text-gray-500">
-                人机验证区域
-              </div>
+              {captchaSiteKey ? (
+                <div ref={captchaRef} className="flex justify-center min-h-[78px]" />
+              ) : (
+                <div className="border rounded-lg p-4 text-center text-amber-700 bg-amber-50 text-sm">
+                  已开启人机验证，但未配置 Site Key。请在管理控制台 → 安全配置中填写。
+                </div>
+              )}
             </div>
           )}
 
@@ -225,7 +355,12 @@ export default function RegisterPage() {
         </form>
 
         <div className="mt-4 text-center text-gray-500">
-          <p>已有账号？<a href="/login" className="text-blue-600 hover:underline">登录</a></p>
+          <p>
+            已有账号？
+            <a href="/login" className="text-blue-600 hover:underline">
+              登录
+            </a>
+          </p>
         </div>
       </div>
     </div>

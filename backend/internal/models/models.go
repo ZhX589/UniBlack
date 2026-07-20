@@ -189,3 +189,16 @@ type AccessList struct {
 	CreatedBy *string   `gorm:"type:uuid" json:"created_by,omitempty"`
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
+
+// VerificationCode is a short-lived code for email verification flows.
+type VerificationCode struct {
+	ID        string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Email     string     `gorm:"type:varchar(255);not null" json:"email"`
+	Code      string     `gorm:"type:varchar(32);not null" json:"-"`
+	Purpose   string     `gorm:"type:varchar(50);not null;default:'register'" json:"purpose"`
+	ExpiresAt time.Time  `gorm:"not null" json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at,omitempty"`
+	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`
+}
+
+func (VerificationCode) TableName() string { return "verification_codes" }

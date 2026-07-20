@@ -1,0 +1,53 @@
+package repository
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/ZhX589/UniBlack/backend/internal/models"
+	"gorm.io/gorm"
+)
+
+var ErrVerificationNotFound = errors.New("verification code not found")
+
+// VerificationRepository stores short-lived email codes.
+type VerificationRepository struct {
+	db *gorm.DB
+}
+
+func NewVerificationRepository(db *gorm.DB) *VerificationRepository {
+	return &VerificationRepository{db: db}
+}
+
+// Create inserts a verification code.
+func (r *VerificationRepository) Create(ctx context.Context, code *models.VerificationCode) error {
+	return r.db.WithContext(ctx).Create(code).Error
+}
+
+// Consume validates and marks a code as used if it is still valid.
+func (r *VerificationRepository) Consume(ctx context.Context, email, purpose, code string) error {
+	var row models.VerificationCode
+	err := r.db.WithContext(ctx).
+		Where("email = ? AND purpose = ? AND code = ? AND used_at IS NULL AND expires_at > ?",
+			email, purpose, code, time.Now()).
+		Order("created_at DESC").
+		First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrVerificationNotFound
+		}
+		return err
+	}
+	now := time.Now()
+	return r.db.WithContext(ctx).Model(&row).Update("used_at", now).Error
+}
+
+// InvalidateEmail marks prior unused codes for email+purpose as used.
+func (r *VerificationRepository) InvalidateEmail(ctx context.Context, email, purpose string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).
+		Model(&models.VerificationCode{}).
+		Where("email = ? AND purpose = ? AND used_at IS NULL", email, purpose).
+		Update("used_at", now).Error
+}

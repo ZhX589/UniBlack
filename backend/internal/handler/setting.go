@@ -28,13 +28,15 @@ func (h *SystemSettingHandler) GetPublicSettings(c echo.Context) error {
 	return c.JSON(http.StatusOK, settings)
 }
 
-// GetAllSettings returns all settings (admin only)
+// GetAllSettings returns all settings as a flat array (admin only)
 func (h *SystemSettingHandler) GetAllSettings(c echo.Context) error {
 	settings, err := h.settingService.GetAllSettings(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-	return c.JSON(http.StatusOK, settings)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"settings": settings,
+	})
 }
 
 // UpdateSettings updates multiple settings (admin only)

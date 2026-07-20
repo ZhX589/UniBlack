@@ -43,27 +43,30 @@ func (s *SystemSettingService) GetSettingValue(ctx context.Context, key string, 
 	return s.settingRepo.GetSettingValue(ctx, key, dest)
 }
 
-// GetAllSettings retrieves all settings grouped by category
-func (s *SystemSettingService) GetAllSettings(ctx context.Context) (map[string][]models.SystemSetting, error) {
+// GetAllSettings retrieves all settings as a flat list (admin UI).
+// Secret fields are redacted in the value payload.
+func (s *SystemSettingService) GetAllSettings(ctx context.Context) ([]models.SystemSetting, error) {
 	settings, err := s.settingRepo.GetAllSettings(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	grouped := make(map[string][]models.SystemSetting)
-	for _, setting := range settings {
-		// Extract category from key (e.g., "site.name" -> "site")
-		category := "other"
-		for i, c := range setting.Key {
-			if c == '.' {
-				category = setting.Key[:i]
-				break
-			}
+	for i := range settings {
+		if isSecretSettingKey(settings[i].Key) {
+			settings[i].Value = `"••••••••"`
 		}
-		grouped[category] = append(grouped[category], setting)
 	}
+	return settings, nil
+}
 
-	return grouped, nil
+func isSecretSettingKey(key string) bool {
+	switch key {
+	case "security.smtp_password",
+		"security.captcha_secret_key",
+		"auth.oauth_github_client_secret":
+		return true
+	default:
+		return false
+	}
 }
 
 // UpdateSettingRequest represents a setting update request
@@ -75,6 +78,12 @@ type UpdateSettingRequest struct {
 // UpdateSettings updates multiple settings
 func (s *SystemSettingService) UpdateSettings(ctx context.Context, settings []UpdateSettingRequest, updatedBy string) error {
 	for _, setting := range settings {
+		// Skip redacted secret placeholders so admin UI re-save does not wipe secrets
+		if isSecretSettingKey(setting.Key) {
+			if str, ok := setting.Value.(string); ok && (str == "" || str == "••••••••") {
+				continue
+			}
+		}
 		if err := s.settingRepo.SetSetting(ctx, setting.Key, setting.Value, nil, &updatedBy); err != nil {
 			return err
 		}

@@ -76,9 +76,10 @@ func main() {
 	auditRepo := repository.NewAuditLogRepository(database)
 	settingRepo := repository.NewSystemSettingRepository(database)
 	accessListRepo := repository.NewAccessListRepository(database)
+	verifyRepo := repository.NewVerificationRepository(database)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, settingRepo, accessListRepo, jwtProvider)
+	authService := service.NewAuthService(userRepo, settingRepo, accessListRepo, verifyRepo, jwtProvider)
 	subjectService := service.NewSubjectService(subjectRepo)
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
