@@ -500,6 +500,104 @@ API 应建立在稳定的数据模型之上。
 
 ---
 
+# Phase 11 - Admin Console & Enhanced Registration
+
+## Why
+
+云黑名单系统需要支持自定义配置，而不是硬编码。同时注册流程需要增加安全验证（人机验证、邮箱验证），防止恶意注册。
+
+管理控制台让管理员可以配置系统行为，而无需修改代码或环境变量。
+
+## Goal
+
+### 1. 注册页面增强
+- 邮箱验证码验证（可配置开关）
+- 人机验证（reCAPTCHA / hCaptcha / Cloudflare Turnstile，可配置）
+- 注册协议展示
+
+### 2. 管理控制台（System Settings）
+
+**基础配置**：
+- 项目名称（自定义显示名称）
+- 项目描述
+- 主题色（主色调、Logo）
+- 联系邮箱
+
+**安全配置**：
+- 邮件服务（SMTP 配置）
+- 邮箱验证开关
+- 人机验证（provider + site key + secret key）
+- API 限速配置（公开接口、认证接口分别配置）
+
+**登录配置**：
+- OAuth 第三方登录配置（GitHub、Discord 等）
+- 注册开关（允许/禁止新用户注册）
+
+### 3. 用户管理
+- 用户列表（搜索、分页、筛选）
+- 用户详情查看
+- 禁用/启用用户
+- 角色分配（admin / moderator / user）
+- 重置密码
+
+### 4. 名单管理
+- 白名单（IP / 用户名，跳过限速）
+- 黑名单（IP / 邮箱，禁止注册/访问）
+- 批量导入/导出
+
+### 5. 初始配置
+- **生产环境**：首次启动时要求配置 admin 账户密码
+- **开发环境**：默认 admin 密码 `admin123`
+
+## 数据库设计
+
+### system_settings 表
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| key | VARCHAR(100) | 配置键（唯一） |
+| value | JSONB | 配置值（支持复杂对象） |
+| description | TEXT | 配置说明 |
+| updated_by | UUID | 最后修改者 |
+| updated_at | TIMESTAMP | 最后修改时间 |
+
+**默认配置键**：
+- `site.name` - 项目名称
+- `site.description` - 项目描述
+- `site.theme_color` - 主题色
+- `security.email_verification` - 邮箱验证开关
+- `security.captcha_provider` - 人机验证提供商
+- `security.captcha_config` - 人机验证配置
+- `security.smtp_config` - SMTP 配置
+- `security.rate_limit` - API 限速配置
+- `auth.registration_enabled` - 注册开关
+- `auth.oauth_config` - OAuth 配置
+
+### access_lists 表（白名单/黑名单）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | UUID | 主键 |
+| type | VARCHAR(20) | 类型（whitelist/blacklist） |
+| target | VARCHAR(50) | 目标类型（ip/email/username） |
+| value | VARCHAR(255) | 值 |
+| reason | TEXT | 原因 |
+| created_by | UUID | 创建者 |
+| created_at | TIMESTAMP | 创建时间 |
+
+## Verification
+
+应满足以下条件：
+
+- 管理控制台可正常访问和配置
+- 配置变更实时生效（无需重启）
+- 注册页面可配置人机验证和邮箱验证
+- 生产环境首次启动要求设置 admin 密码
+- 开发环境使用默认密码 admin123
+- 用户管理功能正常
+- 白名单/黑名单功能正常
+
+---
+
 # Long-term Goals
 
 未来版本计划包括：
