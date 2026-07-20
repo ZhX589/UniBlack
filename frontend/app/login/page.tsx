@@ -1,14 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useState, type FormEvent } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useAuth } from '@/app/providers'
 
 export default function LoginPage() {
+  const { login } = useAuth()
+  const router = useRouter()
+  const search = useSearchParams()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -22,9 +28,8 @@ export default function LoginPage() {
 
       if (res.ok) {
         const data = await res.json()
-        localStorage.setItem('token', data.access_token)
-        localStorage.setItem('refresh_token', data.refresh_token)
-        window.location.href = '/'
+        login(data.access_token, data.refresh_token)
+        router.replace(search.get('next') || '/')
         return
       }
 
@@ -95,7 +100,7 @@ export default function LoginPage() {
         </form>
 
         <div className="mt-4 text-center text-gray-500">
-          <p>还没有账号？<a href="/register" className="text-blue-600 hover:underline">注册</a></p>
+          <p>还没有账号？<Link href="/register" className="text-blue-600 hover:underline">注册</Link></p>
         </div>
       </div>
     </div>
