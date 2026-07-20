@@ -256,8 +256,9 @@ Subject 的社交账号/联系方式，支持国内外主流平台。
 
 ```sql
 -- Identifier 查询优化
-CREATE UNIQUE INDEX idx_identifier_type_value ON identifiers(type, value);
+CREATE UNIQUE INDEX idx_identifier_platform_value ON identifiers(platform, value);
 CREATE INDEX idx_identifier_subject ON identifiers(subject_id);
+CREATE INDEX idx_identifier_platform ON identifiers(platform);
 
 -- Case 查询优化
 CREATE INDEX idx_case_subject ON cases(subject_id);
@@ -266,6 +267,7 @@ CREATE INDEX idx_case_submitted_by ON cases(submitted_by);
 
 -- Evidence 查询优化
 CREATE INDEX idx_evidence_case ON evidence(case_id);
+CREATE INDEX idx_evidence_sha256 ON evidence(sha256);
 
 -- Submission 查询优化
 CREATE INDEX idx_submission_status ON submissions(status);
