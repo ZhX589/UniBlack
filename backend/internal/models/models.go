@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"github.com/lib/pq"
 )
 
 // User represents a system user
@@ -130,7 +128,7 @@ func (Evidence) TableName() string {
 type Submission struct {
 	ID                  string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	CaseID              *string    `gorm:"type:uuid" json:"case_id,omitempty"`
-	SubjectIdentifiers  pq.StringArray `gorm:"type:jsonb" json:"subject_identifiers"`
+	SubjectIdentifiers  string     `gorm:"type:jsonb" json:"subject_identifiers"`
 	Reason              string     `gorm:"type:text;not null" json:"reason"`
 	Status              string     `gorm:"type:varchar(20);default:'draft'" json:"status"`
 	SubmittedBy         *string    `gorm:"type:uuid" json:"submitted_by,omitempty"`

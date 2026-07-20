@@ -12,6 +12,7 @@ import (
 	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
+	"github.com/ZhX589/UniBlack/backend/internal/storage"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -58,21 +59,30 @@ func main() {
 		Issuer:        "uniblack",
 	})
 
+	// Initialize storage
+	storageBackend := storage.NewLocalStorage("./uploads", "http://localhost:8080/uploads")
+
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(database)
 	subjectRepo := repository.NewSubjectRepository(database)
 	caseRepo := repository.NewCaseRepository(database)
+	evidenceRepo := repository.NewEvidenceRepository(database)
+	submissionRepo := repository.NewSubmissionRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtProvider)
 	subjectService := service.NewSubjectService(subjectRepo)
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
+	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
+	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	subjectHandler := handler.NewSubjectHandler(subjectService)
 	caseHandler := handler.NewCaseHandler(caseService)
+	evidenceHandler := handler.NewEvidenceHandler(evidenceService)
+	submissionHandler := handler.NewSubmissionHandler(submissionService)
 
 	// Public routes
 	e.GET("/", func(c echo.Context) error {
@@ -119,10 +129,31 @@ func main() {
 	caseGroup.DELETE("/:id", caseHandler.DeleteCase)
 	caseGroup.GET("/:id/history", caseHandler.GetCaseHistory)
 
+	// Evidence routes (authenticated)
+	evidenceGroup := apiGroup.Group("/evidence")
+	evidenceGroup.POST("", evidenceHandler.CreateEvidence)
+	evidenceGroup.POST("/upload", evidenceHandler.UploadEvidence)
+	evidenceGroup.GET("/:id", evidenceHandler.GetEvidence)
+	evidenceGroup.DELETE("/:id", evidenceHandler.DeleteEvidence)
+
+	// Case evidence routes
+	caseGroup.GET("/:id/evidence", evidenceHandler.GetEvidenceByCaseID)
+
+	// Submission routes (authenticated)
+	submissionGroup := apiGroup.Group("/submissions")
+	submissionGroup.POST("", submissionHandler.CreateSubmission)
+	submissionGroup.GET("", submissionHandler.ListSubmissions)
+	submissionGroup.GET("/:id", submissionHandler.GetSubmission)
+	submissionGroup.DELETE("/:id", submissionHandler.DeleteSubmission)
+
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")
 	reviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
 	reviewGroup.POST("", caseHandler.ReviewCase)
+
+	submissionReviewGroup := submissionGroup.Group("/:id/review")
+	submissionReviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
+	submissionReviewGroup.POST("", submissionHandler.ReviewSubmission)
 
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
@@ -130,6 +161,9 @@ func main() {
 	adminGroup.GET("/dashboard", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"message": "admin dashboard"})
 	})
+
+	// Serve static files (uploads)
+	e.Static("/uploads", "./uploads")
 
 	port := os.Getenv("PORT")
 	if port == "" {
