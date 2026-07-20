@@ -24,8 +24,20 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	user, err := h.authService.Register(c.Request().Context(), req)
+	// Get client IP
+	ip := c.RealIP()
+
+	user, err := h.authService.Register(c.Request().Context(), req, ip)
 	if err != nil {
+		if err == service.ErrRegistrationClosed {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "registration is closed"})
+		}
+		if err == service.ErrInvalidCaptcha {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid captcha"})
+		}
+		if err == service.ErrInvalidCode {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid verification code"})
+		}
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 	}
 
@@ -91,4 +103,37 @@ func (h *AuthHandler) GetProfile(c echo.Context) error {
 		"roles":       c.Get("roles"),
 		"permissions": permissions,
 	})
+}
+
+// SendVerificationCode sends a verification code to email
+func (h *AuthHandler) SendVerificationCode(c echo.Context) error {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if err := h.authService.SendVerificationCode(c.Request().Context(), req.Email); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send code"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "verification code sent"})
+}
+
+// VerifyEmail verifies an email with a code
+func (h *AuthHandler) VerifyEmail(c echo.Context) error {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+		Code  string `json:"code" validate:"required"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if err := h.authService.VerifyEmail(c.Request().Context(), req.Email, req.Code); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "email verified"})
 }

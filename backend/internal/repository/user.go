@@ -110,3 +110,76 @@ func (r *UserRepository) GetUserPermissions(ctx context.Context, userID string) 
 		Find(&permissions).Error
 	return permissions, err
 }
+
+// ListUsers lists users with pagination and filters
+func (r *UserRepository) ListUsers(ctx context.Context, offset, limit int, search, role, status string) ([]models.User, int64, error) {
+	var users []models.User
+	var total int64
+
+	query := r.db.WithContext(ctx).Model(&models.User{})
+	if search != "" {
+		query = query.Where("username ILIKE ? OR email ILIKE ?", "%"+search+"%", "%"+search+"%")
+	}
+	if role != "" {
+		query = query.Joins("JOIN user_roles ON users.id = user_roles.user_id").
+			Joins("JOIN roles ON user_roles.role_id = roles.id").
+			Where("roles.name = ?", role)
+	}
+	if status == "active" {
+		query = query.Where("is_active = ?", true)
+	} else if status == "inactive" {
+		query = query.Where("is_active = ?", false)
+	}
+
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	err := query.
+		Preload("Roles").
+		Offset(offset).
+		Limit(limit).
+		Order("created_at DESC").
+		Find(&users).Error
+
+	return users, total, err
+}
+
+// ToggleUserActive toggles a user's active status
+func (r *UserRepository) ToggleUserActive(ctx context.Context, userID string, active bool) error {
+	return r.db.WithContext(ctx).
+		Model(&models.User{}).
+		Where("id = ?", userID).
+		Update("is_active", active).Error
+}
+
+// RemoveRole removes a role from a user
+func (r *UserRepository) RemoveRole(ctx context.Context, userID, roleID string) error {
+	return r.db.WithContext(ctx).
+		Exec("DELETE FROM user_roles WHERE user_id = ? AND role_id = ?", userID, roleID).Error
+}
+
+// GetUserRoles retrieves all roles for a user
+func (r *UserRepository) GetUserRoles(ctx context.Context, userID string) ([]models.Role, error) {
+	var roles []models.Role
+	err := r.db.WithContext(ctx).
+		Joins("JOIN user_roles ON roles.id = user_roles.role_id").
+		Where("user_roles.user_id = ?", userID).
+		Find(&roles).Error
+	return roles, err
+}
+
+// GetRoleByName retrieves a role by name
+func (r *UserRepository) GetRoleByName(ctx context.Context, name string) (*models.Role, error) {
+	var role models.Role
+	err := r.db.WithContext(ctx).
+		Where("name = ?", name).
+		First(&role).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &role, nil
+}

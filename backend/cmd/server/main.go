@@ -73,14 +73,22 @@ func main() {
 	submissionRepo := repository.NewSubmissionRepository(database)
 	appealRepo := repository.NewAppealRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
+	settingRepo := repository.NewSystemSettingRepository(database)
+	accessListRepo := repository.NewAccessListRepository(database)
 
 	// Initialize services
-	authService := service.NewAuthService(userRepo, jwtProvider)
+	authService := service.NewAuthService(userRepo, settingRepo, accessListRepo, jwtProvider)
 	subjectService := service.NewSubjectService(subjectRepo)
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
+	settingService := service.NewSystemSettingService(settingRepo, accessListRepo, auditRepo)
+
+	// Seed admin user in dev mode
+	if os.Getenv("GO_ENV") != "production" {
+		authService.SeedAdmin(nil, "admin123")
+	}
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -89,6 +97,9 @@ func main() {
 	evidenceHandler := handler.NewEvidenceHandler(evidenceService)
 	submissionHandler := handler.NewSubmissionHandler(submissionService)
 	appealHandler := handler.NewAppealHandler(appealService)
+	settingHandler := handler.NewSystemSettingHandler(settingService)
+	userHandler := handler.NewUserManagementHandler(database)
+	setupHandler := handler.NewSetupHandler(authService, settingService)
 	publicHandler := handler.NewPublicAPIHandler(subjectService, caseService, evidenceService)
 
 	// Public routes
@@ -96,11 +107,22 @@ func main() {
 		return c.String(200, "UniBlack API Server")
 	})
 
+	// Setup routes (public)
+	setupGroup := e.Group("/api/setup")
+	setupGroup.GET("/check", setupHandler.CheckSetup)
+	setupGroup.POST("/initialize", setupHandler.Initialize)
+
 	// Auth routes (public)
 	authGroup := e.Group("/api/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
 	authGroup.POST("/refresh", authHandler.RefreshToken)
+	authGroup.POST("/send-verification-code", authHandler.SendVerificationCode)
+	authGroup.POST("/verify-email", authHandler.VerifyEmail)
+
+	// Public settings
+	settingsPublicGroup := e.Group("/api/settings")
+	settingsPublicGroup.GET("/public", settingHandler.GetPublicSettings)
 
 	// Public API routes (no auth required)
 	publicGroup := e.Group("/api/v1")
@@ -185,9 +207,28 @@ func main() {
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
 	adminGroup.Use(appMiddleware.RequireRole("admin"))
+
+	// Admin dashboard
 	adminGroup.GET("/dashboard", func(c echo.Context) error {
 		return c.JSON(200, map[string]string{"message": "admin dashboard"})
 	})
+
+	// User management
+	adminGroup.GET("/users", userHandler.ListUsers)
+	adminGroup.GET("/users/:id", userHandler.GetUser)
+	adminGroup.PUT("/users/:id", userHandler.UpdateUser)
+	adminGroup.PUT("/users/:id/active", userHandler.ToggleUserActive)
+	adminGroup.POST("/users/:id/roles", userHandler.AssignRole)
+	adminGroup.DELETE("/users/:id/roles/:role", userHandler.RemoveRole)
+
+	// System settings
+	adminGroup.GET("/settings", settingHandler.GetAllSettings)
+	adminGroup.PUT("/settings", settingHandler.UpdateSettings)
+
+	// Access lists
+	adminGroup.GET("/access-lists", settingHandler.ListAccessListEntries)
+	adminGroup.POST("/access-lists", settingHandler.CreateAccessListEntry)
+	adminGroup.DELETE("/access-lists/:id", settingHandler.DeleteAccessListEntry)
 
 	// Serve static files (uploads)
 	e.Static("/uploads", "./uploads")

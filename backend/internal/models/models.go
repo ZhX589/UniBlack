@@ -6,20 +6,23 @@ import (
 
 // User represents a system user
 type User struct {
-	ID           string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	Username     string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"username"`
-	Email        string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	PasswordHash string         `gorm:"type:varchar(255);not null" json:"-"`
-	AuthProvider string         `gorm:"type:varchar(50);default:'local'" json:"auth_provider"`
-	ExternalID   *string        `gorm:"type:varchar(255)" json:"external_id,omitempty"`
-	DisplayName  *string        `gorm:"type:varchar(255)" json:"display_name,omitempty"`
-	AvatarURL    *string        `gorm:"type:varchar(512)" json:"avatar_url,omitempty"`
-	IsActive     bool           `gorm:"default:true" json:"is_active"`
-	LastLoginAt  *time.Time     `json:"last_login_at,omitempty"`
-	OrgID        *string        `gorm:"type:uuid" json:"org_id,omitempty"`
-	CreatedAt    time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt    time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
-	Roles        []Role         `gorm:"many2many:user_roles;" json:"roles,omitempty"`
+	ID                      string         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Username                string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"username"`
+	Email                   string         `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	PasswordHash            string         `gorm:"type:varchar(255);not null" json:"-"`
+	AuthProvider            string         `gorm:"type:varchar(50);default:'local'" json:"auth_provider"`
+	ExternalID              *string        `gorm:"type:varchar(255)" json:"external_id,omitempty"`
+	DisplayName             *string        `gorm:"type:varchar(255)" json:"display_name,omitempty"`
+	AvatarURL               *string        `gorm:"type:varchar(512)" json:"avatar_url,omitempty"`
+	IsActive                bool           `gorm:"default:true" json:"is_active"`
+	EmailVerified           bool           `gorm:"default:false" json:"email_verified"`
+	EmailVerificationToken  *string        `gorm:"type:varchar(255)" json:"-"`
+	EmailVerificationExpiresAt *time.Time  `json:"-"`
+	LastLoginAt             *time.Time     `json:"last_login_at,omitempty"`
+	OrgID                   *string        `gorm:"type:uuid" json:"org_id,omitempty"`
+	CreatedAt               time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt               time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	Roles                   []Role         `gorm:"many2many:user_roles;" json:"roles,omitempty"`
 }
 
 // Role represents a user role
@@ -164,4 +167,25 @@ type AuditLog struct {
 	IPAddress    *string                `gorm:"type:inet" json:"ip_address,omitempty"`
 	UserAgent    *string                `gorm:"type:text" json:"user_agent,omitempty"`
 	CreatedAt    time.Time              `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// SystemSetting represents a system configuration
+type SystemSetting struct {
+	ID          string      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Key         string      `gorm:"type:varchar(100);uniqueIndex;not null" json:"key"`
+	Value       string      `gorm:"type:jsonb;not null;default:'{}'" json:"value"`
+	Description *string     `gorm:"type:text" json:"description,omitempty"`
+	UpdatedBy   *string     `gorm:"type:uuid" json:"updated_by,omitempty"`
+	UpdatedAt   time.Time   `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+// AccessList represents a whitelist/blacklist entry
+type AccessList struct {
+	ID        string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Type      string    `gorm:"type:varchar(20);not null" json:"type"`
+	Target    string    `gorm:"type:varchar(50);not null" json:"target"`
+	Value     string    `gorm:"type:varchar(255);not null" json:"value"`
+	Reason    *string   `gorm:"type:text" json:"reason,omitempty"`
+	CreatedBy *string   `gorm:"type:uuid" json:"created_by,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
