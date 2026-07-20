@@ -24,6 +24,7 @@ export default function RootLayout({
               <a href="/search" className="hover:text-gray-300">查询</a>
               <a href="/subjects" className="hover:text-gray-300">黑名单</a>
               <a href="/submit" className="hover:text-gray-300">举报</a>
+              <a href="/admin" className="hover:text-gray-300">管理</a>
               <a href="/login" className="hover:text-gray-300">登录</a>
             </div>
           </div>
