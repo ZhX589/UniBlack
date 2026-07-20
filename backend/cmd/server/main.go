@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -87,7 +88,9 @@ func main() {
 
 	// Seed admin user in dev mode
 	if os.Getenv("GO_ENV") != "production" {
-		authService.SeedAdmin(nil, "admin123")
+		if err := authService.SeedAdmin(context.Background(), "admin123"); err != nil {
+			log.Printf("Warning: Failed to seed admin: %v", err)
+		}
 	}
 
 	// Initialize handlers
