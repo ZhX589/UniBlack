@@ -99,6 +99,11 @@ type Case struct {
 	Evidences   []Evidence `gorm:"foreignKey:CaseID" json:"evidences,omitempty"`
 }
 
+// TableName returns the table name for Case
+func (Case) TableName() string {
+	return "cases"
+}
+
 // Evidence represents case evidence
 type Evidence struct {
 	ID          string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
@@ -112,6 +117,11 @@ type Evidence struct {
 	MimeType    *string   `gorm:"type:varchar(100)" json:"mime_type,omitempty"`
 	UploadedBy  *string   `gorm:"type:uuid" json:"uploaded_by,omitempty"`
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// TableName returns the table name for Evidence
+func (Evidence) TableName() string {
+	return "evidence"
 }
 
 // Submission represents a user submission

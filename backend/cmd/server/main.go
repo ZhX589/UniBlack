@@ -61,14 +61,18 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(database)
 	subjectRepo := repository.NewSubjectRepository(database)
+	caseRepo := repository.NewCaseRepository(database)
+	auditRepo := repository.NewAuditLogRepository(database)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtProvider)
 	subjectService := service.NewSubjectService(subjectRepo)
+	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
 	subjectHandler := handler.NewSubjectHandler(subjectService)
+	caseHandler := handler.NewCaseHandler(caseService)
 
 	// Public routes
 	e.GET("/", func(c echo.Context) error {
@@ -99,11 +103,26 @@ func main() {
 	subjectGroup.GET("/:id", subjectHandler.GetSubject)
 	subjectGroup.PUT("/:id", subjectHandler.UpdateSubject)
 	subjectGroup.DELETE("/:id", subjectHandler.DeleteSubject)
+	subjectGroup.GET("/:id/cases", caseHandler.GetCasesBySubjectID)
 
 	// Identifier routes (authenticated)
 	subjectGroup.POST("/:id/identifiers", subjectHandler.AddIdentifier)
 	subjectGroup.GET("/:id/identifiers", subjectHandler.GetIdentifiersBySubjectID)
 	subjectGroup.DELETE("/identifiers/:id", subjectHandler.RemoveIdentifier)
+
+	// Case routes (authenticated)
+	caseGroup := apiGroup.Group("/cases")
+	caseGroup.POST("", caseHandler.CreateCase)
+	caseGroup.GET("", caseHandler.ListCases)
+	caseGroup.GET("/:id", caseHandler.GetCase)
+	caseGroup.PUT("/:id", caseHandler.UpdateCase)
+	caseGroup.DELETE("/:id", caseHandler.DeleteCase)
+	caseGroup.GET("/:id/history", caseHandler.GetCaseHistory)
+
+	// Review routes (require moderator or admin)
+	reviewGroup := caseGroup.Group("/:id/review")
+	reviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
+	reviewGroup.POST("", caseHandler.ReviewCase)
 
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
