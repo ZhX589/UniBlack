@@ -45,6 +45,11 @@ type ReviewAppealRequest struct {
 	ReviewNotes string `json:"review_notes"`
 }
 
+type ResolveAppealRequest struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason"`
+}
+
 // CreateAppeal creates a new appeal
 func (s *AppealService) CreateAppeal(ctx context.Context, req CreateAppealRequest, submittedBy string) (*models.Appeal, error) {
 	// Verify case exists
@@ -119,6 +124,30 @@ func (s *AppealService) ReviewAppeal(ctx context.Context, id string, req ReviewA
 	// Create audit log
 	s.createAuditLog(ctx, reviewedBy, "review", "appeal", appeal.ID, nil)
 
+	return s.appealRepo.GetAppealByID(ctx, id)
+}
+
+func (s *AppealService) ResolveAppeal(ctx context.Context, id string, req ResolveAppealRequest, reviewedBy string) (*models.Appeal, error) {
+	if req.Outcome != "upheld" && req.Outcome != "corrected" && req.Outcome != "withdrawn" && req.Outcome != "malicious_submission" {
+		return nil, errors.New("invalid appeal outcome")
+	}
+	appeal, err := s.appealRepo.GetAppealByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	status := "rejected"
+	if req.Outcome == "corrected" || req.Outcome == "withdrawn" {
+		status = "approved"
+	}
+	if err := s.appealRepo.ReviewAppeal(ctx, id, reviewedBy, status, req.Reason); err != nil {
+		return nil, err
+	}
+	if req.Outcome == "withdrawn" {
+		if err := s.caseRepo.ReviewCase(ctx, appeal.CaseID, reviewedBy, "closed", req.Reason); err != nil {
+			return nil, err
+		}
+	}
+	s.createAuditLog(ctx, reviewedBy, "resolve", "appeal", id, map[string]interface{}{"outcome": req.Outcome, "reason": req.Reason})
 	return s.appealRepo.GetAppealByID(ctx, id)
 }
 

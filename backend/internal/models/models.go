@@ -148,7 +148,7 @@ func (Case) TableName() string {
 // Evidence represents case evidence
 type Evidence struct {
 	ID               string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	CaseID           string    `gorm:"type:uuid;not null" json:"case_id"`
+	CaseID           *string   `gorm:"type:uuid" json:"case_id,omitempty"`
 	EventID          *string   `gorm:"type:uuid;index" json:"event_id,omitempty"`
 	Type             string    `gorm:"type:varchar(20);not null" json:"type"`
 	Title            *string   `gorm:"type:varchar(255)" json:"title,omitempty"`

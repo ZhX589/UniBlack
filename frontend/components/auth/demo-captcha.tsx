@@ -1,7 +1,7 @@
 'use client'
 
 export function DemoCaptcha({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  const verified = value === 'demo-ok'
+  const verified = value !== ''
   return (
     <button
       type="button"

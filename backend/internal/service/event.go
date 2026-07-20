@@ -101,7 +101,11 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		if kind == "" {
 			kind = "username"
 		}
-		accounts = append(accounts, models.Account{Platform: strings.ToLower(strings.TrimSpace(a.Platform)), PlatformLabel: label, AccountType: kind, Username: username, AccountID: accountID, CustomAttributes: a.CustomAttributes, IsPrimary: a.IsPrimary})
+		attributes := a.CustomAttributes
+		if attributes == nil {
+			attributes = map[string]interface{}{}
+		}
+		accounts = append(accounts, models.Account{Platform: strings.ToLower(strings.TrimSpace(a.Platform)), PlatformLabel: label, AccountType: kind, Username: username, AccountID: accountID, CustomAttributes: attributes, IsPrimary: a.IsPrimary})
 	}
 	name, err := domain.ResolveDisplayName(req.DisplayName, inputs)
 	if err != nil {
@@ -111,7 +115,9 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 	if err != nil {
 		return nil, err
 	}
-	subject := &models.Subject{PublicID: publicID, DisplayName: name, Status: "published", CreatedBy: &userID}
+	// Subject lifecycle remains active/inactive; public visibility belongs to
+	// each Event, whose initial status is published under the Phase 13 policy.
+	subject := &models.Subject{PublicID: publicID, DisplayName: name, Status: "active", CreatedBy: &userID}
 	events := make([]models.Event, 0, len(req.Events))
 	for _, e := range req.Events {
 		if strings.TrimSpace(e.Title) == "" || strings.TrimSpace(e.Details) == "" {

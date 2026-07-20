@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/ZhX589/UniBlack/backend/internal/auth"
+	"github.com/ZhX589/UniBlack/backend/internal/captcha"
 	"github.com/ZhX589/UniBlack/backend/internal/db"
+	exporter "github.com/ZhX589/UniBlack/backend/internal/export"
 	"github.com/ZhX589/UniBlack/backend/internal/handler"
 	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
@@ -65,6 +67,7 @@ func main() {
 
 	// Initialize storage
 	storageBackend := storage.NewLocalStorage("./uploads", "http://localhost:8080/uploads")
+	demoCaptcha := captcha.DefaultDemo()
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(database)
@@ -93,6 +96,7 @@ func main() {
 	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
 	eventService := service.NewEventService(eventRepo, sanctionRepo, userRepo, authService)
 	sanctionService := service.NewSanctionService(sanctionRepo)
+	archiveService := exporter.NewArchiveService(subjectRepo, eventRepo, evidenceRepo, storageBackend)
 
 	// Seed admin user in dev mode
 	if os.Getenv("GO_ENV") != "production" {
@@ -110,9 +114,11 @@ func main() {
 	appealHandler := handler.NewAppealHandler(appealService)
 	eventHandler := handler.NewEventHandler(eventService)
 	sanctionHandler := handler.NewSanctionHandler(sanctionService)
+	archiveHandler := handler.NewArchiveHandler(archiveService)
 	settingHandler := handler.NewSystemSettingHandler(settingService)
 	userHandler := handler.NewUserManagementHandler(database)
 	setupHandler := handler.NewSetupHandler(authService, settingService)
+	verificationHandler := handler.NewVerificationHandler(demoCaptcha)
 	publicHandler := handler.NewPublicAPIHandler(subjectService, caseService, evidenceService)
 
 	// Public routes
@@ -132,6 +138,7 @@ func main() {
 	authGroup.POST("/refresh", authHandler.RefreshToken)
 	authGroup.POST("/send-verification-code", authHandler.SendVerificationCode)
 	authGroup.POST("/verify-email", authHandler.VerifyEmail)
+	e.POST("/api/verification/demo", verificationHandler.IssueDemoToken)
 
 	// Public settings
 	settingsPublicGroup := e.Group("/api/settings")
@@ -219,6 +226,7 @@ func main() {
 	appealReviewGroup := appealGroup.Group("/:id/review")
 	appealReviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
 	appealReviewGroup.POST("", appealHandler.ReviewAppeal)
+	appealReviewGroup.POST("/resolve", appealHandler.ResolveAppeal)
 
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
@@ -248,6 +256,8 @@ func main() {
 	adminGroup.DELETE("/access-lists/:id", settingHandler.DeleteAccessListEntry)
 	adminGroup.POST("/sanctions", sanctionHandler.Create)
 	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
+	adminGroup.GET("/exports/subjects/:publicID", archiveHandler.Export)
+	adminGroup.POST("/imports/preview", archiveHandler.PreviewImport)
 
 	// Serve static files (uploads)
 	e.Static("/uploads", "./uploads")

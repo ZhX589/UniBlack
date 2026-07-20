@@ -1,168 +1,39 @@
 'use client'
 
-import { useState } from 'react'
+import Link from 'next/link'
+import { useState, type FormEvent } from 'react'
+import { DemoCaptcha } from '@/components/auth/demo-captcha'
+
+type Account = { platform: string; username: string; account_id: string }
+type EventInput = { title: string; details: string; severity: number }
 
 export default function SubmitPage() {
-  const [formData, setFormData] = useState({
-    identifiers: [{ platform: 'qq', account_type: 'id', value: '' }],
-    reason: '',
-  })
-  const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
+  const [accounts, setAccounts] = useState<Account[]>([{ platform: 'qq', username: '', account_id: '' }])
+  const [events, setEvents] = useState<EventInput[]>([{ title: '', details: '', severity: 1 }])
+  const [displayName, setDisplayName] = useState('')
+  const [verificationCode, setVerificationCode] = useState('')
+  const [captchaToken, setCaptchaToken] = useState('')
   const [error, setError] = useState('')
+  const [result, setResult] = useState<{ public_id: string } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const token = typeof window === 'undefined' ? '' : localStorage.getItem('token') || ''
 
-  const handleIdentifierChange = (index: number, field: string, value: string) => {
-    const newIdentifiers = [...formData.identifiers]
-    newIdentifiers[index] = { ...newIdentifiers[index], [field]: value }
-    setFormData({ ...formData, identifiers: newIdentifiers })
-  }
+  if (!token) return <main className="py-8"><h1 className="text-3xl font-bold">提交对象与事件</h1><p className="mt-3 text-gray-600">登录并完成邮箱验证后可发布对象、账号和事件。提交后默认公开，错误或恶意内容可被申诉、修正、撤销，并可能导致提交权限处罚。</p><div className="mt-6 rounded-lg border border-dashed bg-gray-50 p-6 text-gray-500"><p>账号、事件、证据上传和发布操作在登录后可用。</p><Link href="/login?next=/submit" className="mt-4 inline-block rounded bg-gray-700 px-4 py-2 text-white">登录后提交</Link></div></main>
 
-  const addIdentifier = () => {
-    setFormData({
-      ...formData,
-      identifiers: [...formData.identifiers, { platform: 'qq', account_type: 'id', value: '' }],
-    })
-  }
-
-  const removeIdentifier = (index: number) => {
-    const newIdentifiers = formData.identifiers.filter((_, i) => i !== index)
-    setFormData({ ...formData, identifiers: newIdentifiers })
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-
-    const token = localStorage.getItem('token')
-    if (!token) {
-      setError('请先登录')
-      setLoading(false)
-      return
-    }
-
+  async function publish(e: FormEvent) {
+    e.preventDefault(); setError(''); setLoading(true)
     try {
-      const res = await fetch('/api/submissions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(formData),
-      })
-
-      if (res.ok) {
-        setSuccess(true)
-      } else {
-        const data = await res.json()
-        setError(data.error || '提交失败')
-      }
-    } catch (error) {
-      setError('提交失败，请稍后重试')
-    } finally {
-      setLoading(false)
-    }
+      const res = await fetch('/api/subjects/publish', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ display_name: displayName, accounts, events, verification_code: verificationCode, captcha_token: captchaToken }) })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(data.error || '发布失败'); return }
+      setResult(data)
+    } finally { setLoading(false) }
   }
-
-  if (success) {
-    return (
-      <div className="py-8 text-center">
-        <div className="bg-green-50 text-green-600 p-6 rounded-lg">
-          <h2 className="text-2xl font-bold mb-2">提交成功</h2>
-          <p>您的举报已提交，等待管理员审核。</p>
-          <a href="/" className="text-blue-600 hover:underline mt-4 inline-block">返回首页</a>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="py-8">
-      <h1 className="text-3xl font-bold mb-6">提交举报</h1>
-
-      {error && (
-        <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4">
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-md p-6">
-        <div className="mb-6">
-          <label className="block text-gray-700 mb-2">被举报人账号信息</label>
-          {formData.identifiers.map((identifier, index) => (
-            <div key={index} className="flex gap-2 mb-2">
-              <select
-                value={identifier.platform}
-                onChange={(e) => handleIdentifierChange(index, 'platform', e.target.value)}
-                className="border rounded-lg px-3 py-2"
-              >
-                <option value="qq">QQ</option>
-                <option value="wechat">微信</option>
-                <option value="bilibili">B站</option>
-                <option value="douyin">抖音</option>
-                <option value="x">X (Twitter)</option>
-                <option value="telegram">Telegram</option>
-                <option value="discord">Discord</option>
-                <option value="steam">Steam</option>
-                <option value="phone">手机号</option>
-                <option value="email">邮箱</option>
-              </select>
-              <select
-                value={identifier.account_type}
-                onChange={(e) => handleIdentifierChange(index, 'account_type', e.target.value)}
-                className="border rounded-lg px-3 py-2"
-              >
-                <option value="id">ID</option>
-                <option value="username">用户名</option>
-                <option value="nickname">昵称</option>
-              </select>
-              <input
-                type="text"
-                value={identifier.value}
-                onChange={(e) => handleIdentifierChange(index, 'value', e.target.value)}
-                placeholder="账号值"
-                className="flex-1 border rounded-lg px-3 py-2"
-                required
-              />
-              {formData.identifiers.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => removeIdentifier(index)}
-                  className="text-red-600 hover:text-red-800"
-                >
-                  删除
-                </button>
-              )}
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={addIdentifier}
-            className="text-blue-600 hover:underline"
-          >
-            + 添加更多账号
-          </button>
-        </div>
-
-        <div className="mb-6">
-          <label className="block text-gray-700 mb-2">举报原因</label>
-          <textarea
-            value={formData.reason}
-            onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-            className="w-full border rounded-lg px-4 py-2 h-32"
-            placeholder="请详细描述举报原因..."
-            required
-          />
-        </div>
-
-        <button
-          type="submit"
-          className="w-full bg-red-600 text-white py-2 rounded-lg hover:bg-red-700"
-          disabled={loading}
-        >
-          {loading ? '提交中...' : '提交举报'}
-        </button>
-      </form>
-    </div>
-  )
+  if (result) return <main className="py-8"><h1 className="text-2xl font-bold">对象与事件已发布</h1><p className="mt-2">公开对象 ID：<code>{result.public_id}</code></p><Link href={`/subjects/${result.public_id}`} className="mt-4 inline-block text-blue-600">查看对象档案</Link></main>
+  return <main className="mx-auto max-w-3xl py-8"><h1 className="text-3xl font-bold">提交对象与事件</h1><p className="mt-2 text-gray-600">分段填写对象、账号、事件与验证信息。开发环境邮箱验证码为 123456。</p>{error && <p className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>}<form onSubmit={publish} className="mt-6 space-y-6">
+    <section id="subject" className="rounded-lg bg-white p-5 shadow"><h2 className="font-semibold">1. 对象</h2><input className="mt-3 w-full rounded border p-2" placeholder="通用名（留空时使用第一条账号用户名）" value={displayName} onChange={(e) => setDisplayName(e.target.value)} /></section>
+    <section id="accounts" className="rounded-lg bg-white p-5 shadow"><h2 className="font-semibold">2. 账号</h2>{accounts.map((a,i)=><div className="mt-3 flex gap-2" key={i}><input className="w-28 rounded border p-2" value={a.platform} onChange={(e)=>setAccounts(accounts.map((x,j)=>j===i?{...x,platform:e.target.value}:x))}/><input className="flex-1 rounded border p-2" placeholder="用户名" value={a.username} onChange={(e)=>setAccounts(accounts.map((x,j)=>j===i?{...x,username:e.target.value}:x))}/><input className="flex-1 rounded border p-2" placeholder="账号 ID" value={a.account_id} onChange={(e)=>setAccounts(accounts.map((x,j)=>j===i?{...x,account_id:e.target.value}:x))}/></div>)}<button type="button" className="mt-3 text-blue-600" onClick={()=>setAccounts([...accounts,{platform:'custom',username:'',account_id:''}])}>添加账号</button></section>
+    <section id="events" className="rounded-lg bg-white p-5 shadow"><h2 className="font-semibold">3. 事件</h2>{events.map((v,i)=><div className="mt-3 space-y-2" key={i}><input required className="w-full rounded border p-2" placeholder="事件标题" value={v.title} onChange={(e)=>setEvents(events.map((x,j)=>j===i?{...x,title:e.target.value}:x))}/><textarea required className="w-full rounded border p-2" placeholder="事件详情" value={v.details} onChange={(e)=>setEvents(events.map((x,j)=>j===i?{...x,details:e.target.value}:x))}/></div>)}<button type="button" className="mt-3 text-blue-600" onClick={()=>setEvents([...events,{title:'',details:'',severity:1}])}>添加事件</button></section>
+    <section id="verification" className="rounded-lg bg-white p-5 shadow"><h2 className="font-semibold">4. 验证与发布</h2><input className="mt-3 w-full rounded border p-2" placeholder="邮箱验证码" value={verificationCode} onChange={(e)=>setVerificationCode(e.target.value)}/><div className="mt-3"><DemoCaptcha value={captchaToken} onChange={setCaptchaToken} purpose="submission"/></div><button disabled={loading} className="mt-4 w-full rounded bg-red-700 p-2 text-white">{loading?'发布中...':'确认并公开发布'}</button></section>
+  </form></main>
 }

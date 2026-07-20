@@ -52,6 +52,13 @@ func (r *EvidenceRepository) GetEvidenceByCaseID(ctx context.Context, caseID str
 	return evidences, err
 }
 
+// GetEvidenceByEventID retrieves Phase 13 evidence by event relation.
+func (r *EvidenceRepository) GetEvidenceByEventID(ctx context.Context, eventID string) ([]models.Evidence, error) {
+	var evidences []models.Evidence
+	err := r.db.WithContext(ctx).Where("event_id = ?", eventID).Order("created_at ASC").Find(&evidences).Error
+	return evidences, err
+}
+
 // DeleteEvidence deletes evidence
 func (r *EvidenceRepository) DeleteEvidence(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).

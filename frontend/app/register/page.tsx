@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { DemoCaptcha } from '@/components/auth/demo-captcha'
 import { settingBool } from '@/lib/settings'
 
@@ -24,7 +24,7 @@ export default function RegisterPage() {
     if (!res.ok) return setError('发送验证码失败')
     setSent(true); setError('')
   }
-  async function submit(e: React.FormEvent) {
+  async function submit(e: FormEvent) {
     e.preventDefault(); setError('')
     if (form.password !== form.confirmPassword) return setError('两次密码不一致')
     if (captchaEnabled && !form.captchaToken) return setError('请完成人机验证')

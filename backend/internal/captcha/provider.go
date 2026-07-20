@@ -35,7 +35,7 @@ func NewProvider(cfg Config) Provider {
 	}
 	// Configuration may still say turnstile/recaptcha/hcaptcha for future wiring,
 	// but this project only executes the demo adapter.
-	return NewDemo()
+	return DefaultDemo()
 }
 
 // Noop always succeeds (used when captcha is disabled).

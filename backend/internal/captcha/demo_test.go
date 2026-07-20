@@ -36,7 +36,11 @@ func TestNewProviderUsesDemo(t *testing.T) {
 	if p.Name() != "demo" {
 		t.Fatalf("name=%s", p.Name())
 	}
-	if err := p.Verify(context.Background(), "i-am-human", ""); err != nil {
+	token, err := DefaultDemo().Issue("register", "provider-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Verify(context.Background(), token, ""); err != nil {
 		t.Fatal(err)
 	}
 }

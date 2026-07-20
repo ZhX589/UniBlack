@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
@@ -33,12 +34,16 @@ func (r *SubjectRepository) CreateSubject(ctx context.Context, subject *models.S
 // GetSubjectByID retrieves a subject by ID with identifiers
 func (r *SubjectRepository) GetSubjectByID(ctx context.Context, id string) (*models.Subject, error) {
 	var subject models.Subject
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Preload("Identifiers").
 		Preload("Accounts").
-		Preload("Events").
-		Where("id = ? OR public_id = ?", id, id).
-		First(&subject).Error
+		Preload("Events")
+	if strings.HasPrefix(id, "UBS_") {
+		query = query.Where("public_id = ?", id)
+	} else {
+		query = query.Where("id = ?", id)
+	}
+	err := query.First(&subject).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSubjectNotFound

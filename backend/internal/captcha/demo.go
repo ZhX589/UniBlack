@@ -22,6 +22,12 @@ type Demo struct {
 	used   map[string]time.Time
 }
 
+var defaultDemo = NewDemo()
+
+// DefaultDemo returns the process-wide demo verifier so issued tokens can be
+// consumed exactly once by the same runtime provider.
+func DefaultDemo() *Demo { return defaultDemo }
+
 // NewDemo creates a demo captcha verifier.
 func NewDemo() *Demo {
 	sec := os.Getenv("DEMO_CAPTCHA_SECRET")
@@ -69,10 +75,6 @@ func (d *Demo) Verify(ctx context.Context, token, remoteIP string) error {
 func (d *Demo) VerifyPurpose(token, purpose, sessionID string) error {
 	if token == "" {
 		return ErrInvalidToken
-	}
-	// Accept simple UI confirmation token for progressive migration of frontends.
-	if token == "demo-ok" || token == "i-am-human" {
-		return nil
 	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 2 {
