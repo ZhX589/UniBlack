@@ -35,7 +35,9 @@ func (r *SubjectRepository) GetSubjectByID(ctx context.Context, id string) (*mod
 	var subject models.Subject
 	err := r.db.WithContext(ctx).
 		Preload("Identifiers").
-		Where("id = ?", id).
+		Preload("Accounts").
+		Preload("Events").
+		Where("id = ? OR public_id = ?", id, id).
 		First(&subject).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -81,6 +83,7 @@ func (r *SubjectRepository) ListSubjects(ctx context.Context, offset, limit int,
 	// Get paginated results
 	err := query.
 		Preload("Identifiers").
+		Preload("Accounts").
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").

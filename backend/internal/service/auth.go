@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ZhX589/UniBlack/backend/internal/auth"
@@ -25,7 +27,23 @@ var (
 	ErrInvalidCaptcha     = errors.New("invalid captcha")
 	ErrInvalidCode        = errors.New("invalid verification code")
 	ErrCaptchaNotReady    = errors.New("captcha enabled but secret not configured")
+	ErrSMTPRequired       = errors.New("smtp not configured")
 )
+
+func appEnv() string {
+	if v := os.Getenv("APP_ENV"); v != "" {
+		return strings.ToLower(v)
+	}
+	if v := os.Getenv("GO_ENV"); v != "" {
+		return strings.ToLower(v)
+	}
+	return "development"
+}
+
+func isDevelopment() bool {
+	e := appEnv()
+	return e == "" || e == "development" || e == "dev"
+}
 
 // SettingReader reads system options (DB or OptionMap cache).
 type SettingReader interface {
@@ -137,29 +155,20 @@ func (s *AuthService) Register(ctx context.Context, req RegisterRequest, ip stri
 		return nil, fmt.Errorf("username not allowed")
 	}
 
-	// Captcha (pluggable)
+	// Captcha: runtime is always demo when enabled (no third-party network).
 	capCfg := s.loadCaptchaConfig(ctx)
 	if capCfg.Enabled {
-		if capCfg.Secret == "" {
-			return nil, ErrCaptchaNotReady
-		}
 		if err := captcha.NewProvider(capCfg).Verify(ctx, req.CaptchaToken, ip); err != nil {
 			return nil, ErrInvalidCaptcha
 		}
 	}
 
-	// Email verification code (pluggable via SMTP settings)
+	// Email verification code
 	var emailVerificationEnabled bool
 	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
 	if emailVerificationEnabled {
-		if req.VerificationCode == "" {
-			return nil, ErrInvalidCode
-		}
-		if s.verifyRepo == nil {
-			return nil, ErrInvalidCode
-		}
-		if err := s.verifyRepo.Consume(ctx, req.Email, "register", req.VerificationCode); err != nil {
-			return nil, ErrInvalidCode
+		if err := s.VerifyEmailCode(ctx, req.Email, "register", req.VerificationCode); err != nil {
+			return nil, err
 		}
 	}
 
@@ -240,8 +249,16 @@ func (s *AuthService) GetUserPermissions(ctx context.Context, userID string) ([]
 	return s.userRepo.GetUserPermissions(ctx, userID)
 }
 
-// SendVerificationCode sends a registration verification code to email.
+// SendVerificationCode sends a verification code for the given purpose (default register).
 func (s *AuthService) SendVerificationCode(ctx context.Context, email string) error {
+	return s.SendVerificationCodeForPurpose(ctx, email, "register")
+}
+
+// SendVerificationCodeForPurpose issues a code for register/submission/appeal.
+func (s *AuthService) SendVerificationCodeForPurpose(ctx context.Context, email, purpose string) error {
+	if purpose == "" {
+		purpose = "register"
+	}
 	var emailVerificationEnabled bool
 	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
 	if !emailVerificationEnabled {
@@ -251,16 +268,27 @@ func (s *AuthService) SendVerificationCode(ctx context.Context, email string) er
 		return fmt.Errorf("verification store unavailable")
 	}
 
+	// Development: accept fixed 123456; do not send mail or store random codes.
+	if isDevelopment() {
+		return nil
+	}
+
+	var host string
+	s.opt(ctx, "security.smtp_host", &host)
+	if strings.TrimSpace(host) == "" {
+		return ErrSMTPRequired
+	}
+
 	code, err := generateNumericCode(6)
 	if err != nil {
 		return err
 	}
-	_ = s.verifyRepo.InvalidateEmail(ctx, email, "register")
+	_ = s.verifyRepo.InvalidateEmail(ctx, email, purpose)
 	row := &models.VerificationCode{
 		Email:     email,
 		Code:      code,
-		Purpose:   "register",
-		ExpiresAt: time.Now().Add(15 * time.Minute),
+		Purpose:   purpose,
+		ExpiresAt: time.Now().Add(10 * time.Minute),
 	}
 	if err := s.verifyRepo.Create(ctx, row); err != nil {
 		return err
@@ -272,17 +300,56 @@ func (s *AuthService) SendVerificationCode(ctx context.Context, email string) er
 	m := s.loadMailer(ctx)
 	return m.Send(ctx, mailer.Message{
 		To:      []string{email},
-		Subject: fmt.Sprintf("[%s] 注册验证码", siteName),
-		Body:    fmt.Sprintf("您的验证码是 %s，15 分钟内有效。\n\n如非本人操作请忽略。", code),
+		Subject: fmt.Sprintf("[%s] 验证码", siteName),
+		Body:    fmt.Sprintf("您的验证码是 %s，10 分钟内有效。\n\n如非本人操作请忽略。", code),
 	})
 }
 
-// VerifyEmail verifies an email with a code (standalone).
-func (s *AuthService) VerifyEmail(ctx context.Context, email, code string) error {
+// VerifyEmailCode validates a code for purpose. Development accepts only 123456.
+func (s *AuthService) VerifyEmailCode(ctx context.Context, email, purpose, code string) error {
+	if strings.TrimSpace(code) == "" {
+		return ErrInvalidCode
+	}
+	if purpose == "" {
+		purpose = "register"
+	}
+	if isDevelopment() {
+		if code != "123456" {
+			return ErrInvalidCode
+		}
+		return nil
+	}
 	if s.verifyRepo == nil {
 		return ErrInvalidCode
 	}
-	return s.verifyRepo.Consume(ctx, email, "register", code)
+	if err := s.verifyRepo.Consume(ctx, email, purpose, code); err != nil {
+		return ErrInvalidCode
+	}
+	return nil
+}
+
+// VerifyEmail verifies an email with a code (standalone, register purpose).
+func (s *AuthService) VerifyEmail(ctx context.Context, email, code string) error {
+	return s.VerifyEmailCode(ctx, email, "register", code)
+}
+
+// VerifySubmissionValidation checks the configured email and demo-captcha
+// requirements before a subject/event record may be published.
+func (s *AuthService) VerifySubmissionValidation(ctx context.Context, email, code, captchaToken string) error {
+	var emailVerificationEnabled bool
+	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
+	if emailVerificationEnabled {
+		if err := s.VerifyEmailCode(ctx, email, "submission", code); err != nil {
+			return err
+		}
+	}
+	capCfg := s.loadCaptchaConfig(ctx)
+	if capCfg.Enabled {
+		if err := captcha.NewProvider(capCfg).Verify(ctx, captchaToken, ""); err != nil {
+			return ErrInvalidCaptcha
+		}
+	}
+	return nil
 }
 
 // SeedAdmin creates the default admin user if it doesn't exist

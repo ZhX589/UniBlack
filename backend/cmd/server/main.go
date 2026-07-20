@@ -73,6 +73,8 @@ func main() {
 	evidenceRepo := repository.NewEvidenceRepository(database)
 	submissionRepo := repository.NewSubmissionRepository(database)
 	appealRepo := repository.NewAppealRepository(database)
+	eventRepo := repository.NewEventRepository(database)
+	sanctionRepo := repository.NewSanctionRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
 	settingRepo := repository.NewSystemSettingRepository(database)
 	accessListRepo := repository.NewAccessListRepository(database)
@@ -89,6 +91,8 @@ func main() {
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
+	eventService := service.NewEventService(eventRepo, sanctionRepo, userRepo, authService)
+	sanctionService := service.NewSanctionService(sanctionRepo)
 
 	// Seed admin user in dev mode
 	if os.Getenv("GO_ENV") != "production" {
@@ -104,6 +108,8 @@ func main() {
 	evidenceHandler := handler.NewEvidenceHandler(evidenceService)
 	submissionHandler := handler.NewSubmissionHandler(submissionService)
 	appealHandler := handler.NewAppealHandler(appealService)
+	eventHandler := handler.NewEventHandler(eventService)
+	sanctionHandler := handler.NewSanctionHandler(sanctionService)
 	settingHandler := handler.NewSystemSettingHandler(settingService)
 	userHandler := handler.NewUserManagementHandler(database)
 	setupHandler := handler.NewSetupHandler(authService, settingService)
@@ -151,6 +157,7 @@ func main() {
 	// Subject routes (authenticated)
 	subjectGroup := apiGroup.Group("/subjects")
 	subjectGroup.POST("", subjectHandler.CreateSubject)
+	subjectGroup.POST("/publish", eventHandler.Publish)
 	subjectGroup.GET("", subjectHandler.ListSubjects)
 	subjectGroup.GET("/:id", subjectHandler.GetSubject)
 	subjectGroup.PUT("/:id", subjectHandler.UpdateSubject)
@@ -197,6 +204,8 @@ func main() {
 
 	// Case appeal routes
 	caseGroup.GET("/:id/appeals", appealHandler.GetAppealsByCaseID)
+	eventGroup := apiGroup.Group("/events")
+	eventGroup.GET("/:id", eventHandler.Get)
 
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")
@@ -237,6 +246,8 @@ func main() {
 	adminGroup.GET("/access-lists", settingHandler.ListAccessListEntries)
 	adminGroup.POST("/access-lists", settingHandler.CreateAccessListEntry)
 	adminGroup.DELETE("/access-lists/:id", settingHandler.DeleteAccessListEntry)
+	adminGroup.POST("/sanctions", sanctionHandler.Create)
+	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
 
 	// Serve static files (uploads)
 	e.Static("/uploads", "./uploads")
