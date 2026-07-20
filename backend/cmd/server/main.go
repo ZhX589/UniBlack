@@ -60,28 +60,50 @@ func main() {
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(database)
+	subjectRepo := repository.NewSubjectRepository(database)
 
 	// Initialize services
 	authService := service.NewAuthService(userRepo, jwtProvider)
+	subjectService := service.NewSubjectService(subjectRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
+	subjectHandler := handler.NewSubjectHandler(subjectService)
 
 	// Public routes
 	e.GET("/", func(c echo.Context) error {
 		return c.String(200, "UniBlack API Server")
 	})
 
-	// Auth routes
+	// Auth routes (public)
 	authGroup := e.Group("/api/auth")
 	authGroup.POST("/register", authHandler.Register)
 	authGroup.POST("/login", authHandler.Login)
 	authGroup.POST("/refresh", authHandler.RefreshToken)
 
+	// Public search (no auth required)
+	e.GET("/api/search", subjectHandler.SearchSubjects)
+	e.GET("/api/subjects/lookup", subjectHandler.GetSubjectByIdentifier)
+
 	// Protected routes
 	apiGroup := e.Group("/api")
 	apiGroup.Use(appMiddleware.AuthMiddleware(authService))
+
+	// User routes
 	apiGroup.GET("/profile", authHandler.GetProfile)
+
+	// Subject routes (authenticated)
+	subjectGroup := apiGroup.Group("/subjects")
+	subjectGroup.POST("", subjectHandler.CreateSubject)
+	subjectGroup.GET("", subjectHandler.ListSubjects)
+	subjectGroup.GET("/:id", subjectHandler.GetSubject)
+	subjectGroup.PUT("/:id", subjectHandler.UpdateSubject)
+	subjectGroup.DELETE("/:id", subjectHandler.DeleteSubject)
+
+	// Identifier routes (authenticated)
+	subjectGroup.POST("/:id/identifiers", subjectHandler.AddIdentifier)
+	subjectGroup.GET("/:id/identifiers", subjectHandler.GetIdentifiersBySubjectID)
+	subjectGroup.DELETE("/identifiers/:id", subjectHandler.RemoveIdentifier)
 
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
