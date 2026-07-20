@@ -22,34 +22,62 @@ UniBlack 支持
 
 ### 前置要求
 
-- [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)
+- [Go](https://go.dev/dl/) (>= 1.22)
+- [Node.js](https://nodejs.org/) (>= 18)
+- [PostgreSQL](https://www.postgresql.org/download/) (>= 14)
 - [Git](https://git-scm.com/)
 
-### 启动开发环境
+### 克隆项目
 
 ```bash
-# 克隆仓库
 git clone https://github.com/ZhX589/UniBlack.git
 cd UniBlack
-
-# 复制环境变量模板
-cp .env.example .env
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
-
-# 启动所有服务
-docker compose up -d
-
-# 访问应用
-# 前端: http://localhost:3000
-# 后端API: http://localhost:8080
-# MinIO控制台: http://localhost:9001 (minioadmin/minioadmin)
 ```
 
-### 停止服务
+### 启动后端
 
 ```bash
-docker compose down
+# 安装依赖并构建
+cd backend
+go mod tidy
+go build -o server ./cmd/server
+
+# 启动服务器（需要先启动 PostgreSQL）
+./server
+```
+
+后端将在 http://localhost:8080 启动
+
+### 启动前端
+
+```bash
+# 新开终端
+cd frontend
+npm install
+npm run dev
+```
+
+前端将在 http://localhost:3000 启动
+
+### 数据库
+
+确保 PostgreSQL 已启动，然后创建数据库：
+
+```bash
+sudo -iu postgres
+psql -c "CREATE USER uniblack WITH PASSWORD 'uniblack';"
+psql -c "CREATE DATABASE uniblack OWNER uniblack;"
+exit
+```
+
+后端启动时会自动执行数据库迁移。
+
+### Docker 部署（可选）
+
+Docker 仅用于生产部署，详见 `docker-compose.yml`：
+
+```bash
+docker compose up -d
 ```
 
 ## 文档
