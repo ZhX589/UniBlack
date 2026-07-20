@@ -106,24 +106,51 @@ frontend/
 - 配置 PostgreSQL（>=14）
 - 引入 **golang-migrate**，建好 `backend/internal/migrations/` 骨架
 - 配置 MinIO（S3 兼容）用于证据存储
-- 配置 Docker Compose 编排 backend + frontend + postgres + minio
+- 配置 Docker Compose 编排 backend + frontend + postgres + minio（用于最终部署）
 - 提交 `.env.example`（后端 + 前端），确保所有 env 有默认值
 - 配置 GitHub Actions：lint / build / test / migrate 校验
 - 配置代码格式化（gofmt/golangci-lint）与前端（prettier/eslint）
 - 建立统一目录结构（见 Conventions）
 
-最终应能够使用一条命令（`docker compose up`）启动整个开发环境。
+## 开发策略：本地优先
+
+**日常开发使用本地环境验证，Docker 仅用于最终部署打包。**
+
+### 本地开发流程
+
+1. **后端开发**
+   ```bash
+   cd backend
+   go run cmd/server/main.go
+   ```
+
+2. **前端开发**
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+3. **数据库**
+   - 本地安装 PostgreSQL，或使用 `docker compose up postgres -d` 只启动数据库
+   - 运行迁移：`cd backend && go run cmd/server/main.go`（自动执行迁移）
+
+### Docker 用途
+
+Docker Compose 仅用于：
+- 生产环境部署
+- CI/CD 流水线
+- 一键启动完整环境（需要时）
 
 ## Verification
 
 应满足以下条件：
 
-- `docker compose up` 可以成功启动所有服务
-- 前端能够访问
-- 后端能够启动并完成 migrate
-- PostgreSQL 与 MinIO 可以正常连接
+- 后端 `go run cmd/server/main.go` 可以启动并监听端口
+- 前端 `npm run dev` 可以启动并访问 http://localhost:3000
+- 数据库迁移可以正常执行
 - GitHub Actions 可以成功运行
-- 项目 README 中的 Quick Start 可以被其他开发者成功复现
+- Docker Compose 可以构建镜像（验证镜像可用性）
 
 ---
 
