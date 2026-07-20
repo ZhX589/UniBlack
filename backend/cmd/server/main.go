@@ -261,6 +261,7 @@ func main() {
 	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
 	adminGroup.GET("/exports/subjects/:publicID", archiveHandler.Export)
 	adminGroup.POST("/imports/preview", archiveHandler.PreviewImport)
+	adminGroup.POST("/imports", archiveHandler.Import)
 
 	// Serve static files (uploads)
 	e.Static("/uploads", "./uploads")

@@ -45,6 +45,64 @@ type ArchiveService struct {
 	store    storage.Storage
 }
 
+func validateManifest(manifest Manifest) error {
+	if manifest.SchemaVersion != 1 || manifest.PublicID == "" || manifest.DisplayName == "" {
+		return fmt.Errorf("unsupported or missing manifest")
+	}
+	return nil
+}
+
+func readArchive(r io.Reader) (Manifest, map[string][]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, 64<<20))
+	if err != nil {
+		return Manifest{}, nil, err
+	}
+	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		return Manifest{}, nil, err
+	}
+	files := make(map[string][]byte, len(zr.File))
+	var manifest Manifest
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			return Manifest{}, nil, err
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return Manifest{}, nil, err
+		}
+		files[f.Name] = content
+		if f.Name == "manifest.json" {
+			if err := json.Unmarshal(content, &manifest); err != nil {
+				return Manifest{}, nil, err
+			}
+		}
+	}
+	if err := validateManifest(manifest); err != nil {
+		return Manifest{}, nil, err
+	}
+	for _, event := range manifest.Events {
+		for _, evidence := range event.Evidence {
+			if evidence.FileName == "" {
+				continue
+			}
+			content, ok := files[evidence.FileName]
+			if !ok {
+				return Manifest{}, nil, fmt.Errorf("missing evidence file: %s", evidence.FileName)
+			}
+			if evidence.SHA256 != "" {
+				sum := sha256.Sum256(content)
+				if evidence.SHA256 != hex.EncodeToString(sum[:]) {
+					return Manifest{}, nil, fmt.Errorf("evidence hash mismatch: %s", evidence.FileName)
+				}
+			}
+		}
+	}
+	return manifest, files, nil
+}
+
 func NewArchiveService(s *repository.SubjectRepository, e *repository.EventRepository, v *repository.EvidenceRepository, store storage.Storage) *ArchiveService {
 	return &ArchiveService{subjects: s, events: e, evidence: v, store: store}
 }
@@ -134,67 +192,88 @@ type ImportPreview struct {
 }
 
 func (s *ArchiveService) PreviewImport(r io.Reader) (ImportPreview, error) {
-	b, err := io.ReadAll(io.LimitReader(r, 64<<20))
+	manifest, _, err := readArchive(r)
 	if err != nil {
 		return ImportPreview{}, err
-	}
-	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
-	if err != nil {
-		return ImportPreview{}, err
-	}
-	var manifest Manifest
-	for _, f := range zr.File {
-		if f.Name != "manifest.json" {
-			continue
-		}
-		rc, err := f.Open()
-		if err != nil {
-			return ImportPreview{}, err
-		}
-		err = json.NewDecoder(rc).Decode(&manifest)
-		rc.Close()
-		if err != nil {
-			return ImportPreview{}, err
-		}
-		break
-	}
-	if manifest.SchemaVersion != 1 || manifest.PublicID == "" {
-		return ImportPreview{}, fmt.Errorf("unsupported or missing manifest")
-	}
-	files := make(map[string]*zip.File, len(zr.File))
-	for _, f := range zr.File {
-		files[f.Name] = f
-	}
-	for _, event := range manifest.Events {
-		for _, evidence := range event.Evidence {
-			if evidence.FileName == "" {
-				continue
-			}
-			f := files[evidence.FileName]
-			if f == nil {
-				return ImportPreview{}, fmt.Errorf("missing evidence file: %s", evidence.FileName)
-			}
-			rc, err := f.Open()
-			if err != nil {
-				return ImportPreview{}, err
-			}
-			content, err := io.ReadAll(rc)
-			rc.Close()
-			if err != nil {
-				return ImportPreview{}, err
-			}
-			if evidence.SHA256 != "" {
-				sum := sha256.Sum256(content)
-				if evidence.SHA256 != hex.EncodeToString(sum[:]) {
-					return ImportPreview{}, fmt.Errorf("evidence hash mismatch: %s", evidence.FileName)
-				}
-			}
-		}
 	}
 	preview := ImportPreview{PublicID: manifest.PublicID, Valid: true}
 	if _, err := s.subjects.GetSubjectByID(context.Background(), manifest.PublicID); err == nil {
 		preview.Conflicts = []string{manifest.PublicID}
 		preview.Valid = false
 	}
+	accountConflicts, err := s.subjects.AccountConflicts(context.Background(), manifest.Accounts)
+	if err != nil {
+		return ImportPreview{}, err
+	}
+	if len(accountConflicts) > 0 {
+		preview.Conflicts = append(preview.Conflicts, accountConflicts...)
+		preview.Valid = false
+	}
 	return preview, nil
+}
+
+// Import writes a validated archive only if its public ID is still absent.
+// Files are stored before metadata and removed again if the transaction fails.
+func (s *ArchiveService) Import(ctx context.Context, r io.Reader, actorID string) (*models.Subject, error) {
+	manifest, files, err := readArchive(r)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.subjects.GetSubjectByID(ctx, manifest.PublicID); err == nil {
+		return nil, fmt.Errorf("subject public ID already exists")
+	}
+	accountConflicts, err := s.subjects.AccountConflicts(ctx, manifest.Accounts)
+	if err != nil {
+		return nil, err
+	}
+	if len(accountConflicts) > 0 {
+		return nil, fmt.Errorf("account identity already exists")
+	}
+	stored := make([]string, 0)
+	for _, event := range manifest.Events {
+		for _, evidence := range event.Evidence {
+			if evidence.FileName == "" {
+				continue
+			}
+			if _, err := s.store.Upload(ctx, evidence.FileName, bytes.NewReader(files[evidence.FileName]), "application/octet-stream"); err != nil {
+				for _, key := range stored {
+					_ = s.store.Delete(ctx, key)
+				}
+				return nil, err
+			}
+			stored = append(stored, evidence.FileName)
+		}
+	}
+	subject := &models.Subject{PublicID: manifest.PublicID, DisplayName: manifest.DisplayName, Status: "active", CreatedBy: &actorID}
+	for i := range manifest.Accounts {
+		if manifest.Accounts[i].CustomAttributes == nil {
+			manifest.Accounts[i].CustomAttributes = map[string]interface{}{}
+		}
+		// Imported IDs belong to the source database; let PostgreSQL generate new IDs.
+		manifest.Accounts[i].ID = ""
+		manifest.Accounts[i].SubjectID = ""
+	}
+	events := make([]models.Event, 0, len(manifest.Events))
+	evidenceRows := make([]repository.EventEvidence, 0)
+	for eventIndex, m := range manifest.Events {
+		events = append(events, models.Event{Title: m.Title, Details: m.Details, Status: m.Status, Severity: 1, SubmittedBy: &actorID})
+		for _, item := range m.Evidence {
+			if item.FileName == "" {
+				continue
+			}
+			key := item.FileName
+			original := item.OriginalFilename
+			hash := item.SHA256
+			size := int64(len(files[key]))
+			evidenceRows = append(evidenceRows, repository.EventEvidence{EventIndex: eventIndex, Evidence: models.Evidence{Type: item.Type, StorageKey: &key, OriginalFilename: &original, SHA256: &hash, FileSize: &size, UploadedBy: &actorID}})
+		}
+	}
+	audit := &models.AuditLog{UserID: &actorID, Action: "import", ResourceType: "subject", Changes: map[string]interface{}{"public_id": manifest.PublicID}}
+	if err := s.events.PublishWithEvidence(ctx, subject, manifest.Accounts, events, evidenceRows, audit); err != nil {
+		for _, key := range stored {
+			_ = s.store.Delete(ctx, key)
+		}
+		return nil, err
+	}
+	return subject, nil
 }

@@ -53,6 +53,30 @@ func (r *SubjectRepository) GetSubjectByID(ctx context.Context, id string) (*mod
 	return &subject, nil
 }
 
+// AccountConflicts returns normalized account identities that already exist.
+func (r *SubjectRepository) AccountConflicts(ctx context.Context, accounts []models.Account) ([]string, error) {
+	conflicts := make([]string, 0)
+	for _, account := range accounts {
+		platform := strings.ToLower(strings.TrimSpace(account.Platform))
+		var count int64
+		query := r.db.WithContext(ctx).Model(&models.Account{}).Where("lower(btrim(platform)) = ?", platform)
+		if account.AccountID != nil && strings.TrimSpace(*account.AccountID) != "" {
+			query = query.Where("lower(btrim(account_id)) = ?", strings.ToLower(strings.TrimSpace(*account.AccountID)))
+		} else if account.Username != nil && strings.TrimSpace(*account.Username) != "" {
+			query = query.Where("(account_id IS NULL OR btrim(account_id) = '') AND lower(btrim(username)) = ?", strings.ToLower(strings.TrimSpace(*account.Username)))
+		} else {
+			continue
+		}
+		if err := query.Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			conflicts = append(conflicts, platform)
+		}
+	}
+	return conflicts, nil
+}
+
 // GetSubjectByIdentifier retrieves a subject by platform and value
 func (r *SubjectRepository) GetSubjectByIdentifier(ctx context.Context, platform, value string) (*models.Subject, error) {
 	var subject models.Subject

@@ -37,4 +37,22 @@ func (h *ArchiveHandler) PreviewImport(c echo.Context) error {
 	return c.JSON(http.StatusOK, preview)
 }
 
+func (h *ArchiveHandler) Import(c echo.Context) error {
+	file, err := c.FormFile("archive")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "archive is required"})
+	}
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid archive"})
+	}
+	defer src.Close()
+	actorID, _ := c.Get("user_id").(string)
+	subject, err := h.service.Import(c.Request().Context(), src, actorID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, subject)
+}
+
 var _ = bytes.NewBuffer
