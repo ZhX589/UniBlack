@@ -26,7 +26,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const token = localStorage.getItem('token') || ''
-    setUser(decodeToken(token)); setStatus(decodeToken(token) ? 'authenticated' : 'anonymous')
+    const identity = decodeToken(token)
+    if (!identity && token) { localStorage.removeItem('token'); localStorage.removeItem('refresh_token') }
+    setUser(identity); setStatus(identity ? 'authenticated' : 'anonymous')
     fetch('/api/settings/public').then((r) => r.ok ? r.json() : {}).then((settings) => {
       setSite({ name: settingString(settings, 'site.name', 'UniBlack'), registrationEnabled: settingBool(settings, 'auth.registration_enabled', true) })
     }).catch(() => undefined)

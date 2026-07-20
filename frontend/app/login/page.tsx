@@ -29,7 +29,8 @@ export default function LoginPage() {
       if (res.ok) {
         const data = await res.json()
         login(data.access_token, data.refresh_token)
-        router.replace(search.get('next') || '/')
+        const next = search.get('next') || '/'
+        router.replace(next.startsWith('/') && !next.startsWith('//') ? next : '/')
         return
       }
 
