@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -9,6 +12,7 @@ import (
 	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
+	"github.com/ZhX589/UniBlack/backend/internal/storage"
 )
 
 var ErrSubmissionRestricted = errors.New("submission restricted")
@@ -46,11 +50,28 @@ type PublishEventRequest struct {
 	OccurredTo   *time.Time `json:"occurred_to"`
 }
 type PublishSubjectRequest struct {
-	DisplayName      string                  `json:"display_name"`
-	Accounts         []PublishAccountRequest `json:"accounts"`
-	Events           []PublishEventRequest   `json:"events"`
-	VerificationCode string                  `json:"verification_code"`
-	CaptchaToken     string                  `json:"captcha_token"`
+	DisplayName      string                       `json:"display_name"`
+	Accounts         []PublishAccountRequest      `json:"accounts"`
+	Events           []PublishEventRequest        `json:"events"`
+	VerificationCode string                       `json:"verification_code"`
+	CaptchaToken     string                       `json:"captcha_token"`
+	TextEvidence     []PublishTextEvidenceRequest `json:"text_evidence"`
+}
+
+type PublishTextEvidenceRequest struct {
+	EventIndex int    `json:"event_index"`
+	Title      string `json:"title"`
+	Text       string `json:"text"`
+}
+
+func (r PublishTextEvidenceRequest) Validate(eventCount int) error {
+	if r.EventIndex < 0 || r.EventIndex >= eventCount {
+		return errors.New("invalid evidence event index")
+	}
+	if len(r.Text) == 0 || len(r.Text) > MaxTextEvidenceBytes {
+		return errors.New("invalid text evidence size")
+	}
+	return nil
 }
 
 func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, userID string) (*models.Subject, error) {
@@ -139,8 +160,35 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		}
 		events = append(events, models.Event{Title: e.Title, Details: e.Details, Severity: severity, Status: "published", OccurredFrom: e.OccurredFrom, OccurredTo: e.OccurredTo, SubmittedBy: &userID})
 	}
+	// Store text blobs first. Their DB metadata is inserted by the same
+	// transaction as the subject/accounts/events; failed DB writes compensate.
+	evidence := make([]repository.EventEvidence, 0, len(req.TextEvidence))
+	keys := make([]string, 0, len(req.TextEvidence))
+	for number, item := range req.TextEvidence {
+		if err := item.Validate(len(events)); err != nil {
+			return nil, err
+		}
+		key := storage.BuildEvidenceKey(publicID, item.EventIndex+1, number+1, ".txt")
+		body := []byte(item.Text)
+		sum := sha256.Sum256(body)
+		if _, err := s.events.StoreText(ctx, key, bytes.NewReader(body)); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+		size := int64(len(body))
+		hash := hex.EncodeToString(sum[:])
+		mime := "text/plain"
+		original := key[strings.LastIndex(key, "/")+1:]
+		evidence = append(evidence, repository.EventEvidence{
+			EventIndex: item.EventIndex,
+			Evidence:   models.Evidence{Type: "text", Title: &item.Title, StorageKey: &key, OriginalFilename: &original, FileSize: &size, SHA256: &hash, MimeType: &mime, UploadedBy: &userID},
+		})
+	}
 	audit := &models.AuditLog{UserID: &userID, Action: "publish", ResourceType: "subject", Changes: map[string]interface{}{"public_id": publicID, "event_count": len(events)}}
-	if err := s.events.Publish(ctx, subject, accounts, events, audit); err != nil {
+	if err := s.events.PublishWithEvidence(ctx, subject, accounts, events, evidence, audit); err != nil {
+		for _, key := range keys {
+			_ = s.events.DeleteStored(ctx, key)
+		}
 		return nil, err
 	}
 	subject.Accounts = accounts

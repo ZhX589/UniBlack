@@ -76,7 +76,7 @@ func main() {
 	evidenceRepo := repository.NewEvidenceRepository(database)
 	submissionRepo := repository.NewSubmissionRepository(database)
 	appealRepo := repository.NewAppealRepository(database)
-	eventRepo := repository.NewEventRepository(database)
+	eventRepo := repository.NewEventRepository(database, storageBackend)
 	sanctionRepo := repository.NewSanctionRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
 	settingRepo := repository.NewSystemSettingRepository(database)

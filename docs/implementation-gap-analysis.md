@@ -30,9 +30,9 @@
 | 对象通用名规则 | 未实现 | `SubmissionService` 审核时硬编码 `DisplayName: "待补充"` | 不能满足空名自动取第一条账号用户名 |
 | 公开对象 ID | 已实现 | `UBS_<ULID>`、唯一索引、归档命名和 public 查询已验证 | 历史对象保留 UUID 兼容回填值 |
 | 账号字段 | 部分实现 | `Identifier` 有 platform/account_type/value/label | 没有 username/account_id/custom_attributes 的独立模型，也没有新规则的去重策略 |
-| 默认发布 | 部分实现 | `/api/subjects/publish` 创建 active Subject 和 published Event，已 API smoke | 发布请求尚未携带文件证据；旧 Submission 审核兼容保留 |
+| 默认发布 | 部分实现 | `/api/subjects/publish` 创建 active Subject、published Event 与内嵌文本证据索引，已 API smoke | 通用文件证据与完整对象存储补偿事务待补；旧 Submission 审核兼容保留 |
 | 事件证据 | 部分实现 | Evidence 表支持 file/link/text；服务使用 `case_id` | 证据仍绑定 Case；文本没有写入 txt；文件 key 使用时间戳；本地上传返回占位 URL |
-| 真实文件存储 | 部分实现 | LocalStorage 真实写盘，Event 文本 `.txt`、SHA-256、归档 inclusion 已 smoke | 通用 Event 文件上传与 MinIO/S3 adapter 待补 |
+| 真实文件存储 | 部分实现 | LocalStorage 真实写盘；独立或随发布 Event 文本 `.txt`、SHA-256、归档 inclusion 已 smoke | 通用 Event 文件上传与 MinIO/S3 adapter 待补 |
 | 导出/导入包 | 部分实现 | ZIP、manifest v1、README、SHA-256 校验、冲突预览已 smoke | 确认导入执行未实现 |
 | 申诉结论 | 部分实现 | outcome/resolution 持久化，Event corrected/withdrawn 更新已实现 | malicious 提交到处罚创建的自动工作流、版本历史待补 |
 | 分级处罚 | 部分实现 | sanctions、有效期、撤销、发布拦截、审计已 API smoke | 处罚申诉和控制台列表待补 |
