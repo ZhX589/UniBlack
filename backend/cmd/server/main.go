@@ -78,14 +78,17 @@ func main() {
 	accessListRepo := repository.NewAccessListRepository(database)
 	verifyRepo := repository.NewVerificationRepository(database)
 
-	// Initialize services
-	authService := service.NewAuthService(userRepo, settingRepo, accessListRepo, verifyRepo, jwtProvider)
+	// Initialize services (settings first so OptionMap is ready for auth)
+	settingService := service.NewSystemSettingService(settingRepo, accessListRepo, auditRepo)
+	if err := settingService.Bootstrap(context.Background()); err != nil {
+		log.Printf("Warning: settings bootstrap: %v", err)
+	}
+	authService := service.NewAuthService(userRepo, settingService, accessListRepo, verifyRepo, jwtProvider)
 	subjectService := service.NewSubjectService(subjectRepo)
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
-	settingService := service.NewSystemSettingService(settingRepo, accessListRepo, auditRepo)
 
 	// Seed admin user in dev mode
 	if os.Getenv("GO_ENV") != "production" {
@@ -225,8 +228,9 @@ func main() {
 	adminGroup.POST("/users/:id/roles", userHandler.AssignRole)
 	adminGroup.DELETE("/users/:id/roles/:role", userHandler.RemoveRole)
 
-	// System settings
+	// System settings (NewAPI-style option catalog + CRUD)
 	adminGroup.GET("/settings", settingHandler.GetAllSettings)
+	adminGroup.GET("/settings/schema", settingHandler.GetSettingsSchema)
 	adminGroup.PUT("/settings", settingHandler.UpdateSettings)
 
 	// Access lists

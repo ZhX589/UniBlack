@@ -102,3 +102,39 @@ func (r *SystemSettingRepository) IsInitialized(ctx context.Context) bool {
 	err := r.GetSettingValue(ctx, "system.initialized", &value)
 	return err == nil && value
 }
+
+// LoadRawMap returns key → raw JSON value for all rows (for OptionMap merge).
+func (r *SystemSettingRepository) LoadRawMap(ctx context.Context) (map[string]string, error) {
+	settings, err := r.GetAllSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(settings))
+	for _, s := range settings {
+		out[s.Key] = s.Value
+	}
+	return out, nil
+}
+
+// SetRawJSON upserts a pre-encoded JSON value string.
+func (r *SystemSettingRepository) SetRawJSON(ctx context.Context, key, valueJSON string, description *string, updatedBy *string) error {
+	existing, err := r.GetSetting(ctx, key)
+	if err != nil && err != ErrSettingNotFound {
+		return err
+	}
+	if existing != nil {
+		existing.Value = valueJSON
+		if description != nil {
+			existing.Description = description
+		}
+		existing.UpdatedBy = updatedBy
+		return r.db.WithContext(ctx).Save(existing).Error
+	}
+	setting := &models.SystemSetting{
+		Key:         key,
+		Value:       valueJSON,
+		Description: description,
+		UpdatedBy:   updatedBy,
+	}
+	return r.db.WithContext(ctx).Create(setting).Error
+}

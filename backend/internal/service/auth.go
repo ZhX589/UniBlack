@@ -27,10 +27,15 @@ var (
 	ErrCaptchaNotReady    = errors.New("captcha enabled but secret not configured")
 )
 
+// SettingReader reads system options (DB or OptionMap cache).
+type SettingReader interface {
+	GetSettingValue(ctx context.Context, key string, dest interface{}) error
+}
+
 // AuthService handles authentication logic
 type AuthService struct {
 	userRepo       *repository.UserRepository
-	settingRepo    *repository.SystemSettingRepository
+	settings       SettingReader
 	accessListRepo *repository.AccessListRepository
 	verifyRepo     *repository.VerificationRepository
 	provider       auth.AuthProvider
@@ -39,17 +44,23 @@ type AuthService struct {
 // NewAuthService creates a new auth service
 func NewAuthService(
 	userRepo *repository.UserRepository,
-	settingRepo *repository.SystemSettingRepository,
+	settings SettingReader,
 	accessListRepo *repository.AccessListRepository,
 	verifyRepo *repository.VerificationRepository,
 	provider auth.AuthProvider,
 ) *AuthService {
 	return &AuthService{
 		userRepo:       userRepo,
-		settingRepo:    settingRepo,
+		settings:       settings,
 		accessListRepo: accessListRepo,
 		verifyRepo:     verifyRepo,
 		provider:       provider,
+	}
+}
+
+func (s *AuthService) opt(ctx context.Context, key string, dest interface{}) {
+	if s.settings != nil {
+		_ = s.settings.GetSettingValue(ctx, key, dest)
 	}
 }
 
@@ -70,35 +81,47 @@ type LoginRequest struct {
 
 func (s *AuthService) loadCaptchaConfig(ctx context.Context) captcha.Config {
 	var cfg captcha.Config
-	_ = s.settingRepo.GetSettingValue(ctx, "security.captcha_enabled", &cfg.Enabled)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.captcha_provider", &cfg.Provider)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.captcha_site_key", &cfg.SiteKey)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.captcha_secret_key", &cfg.Secret)
+	s.opt(ctx, "security.captcha_enabled", &cfg.Enabled)
+	s.opt(ctx, "security.captcha_provider", &cfg.Provider)
+	s.opt(ctx, "security.captcha_site_key", &cfg.SiteKey)
+	s.opt(ctx, "security.captcha_secret_key", &cfg.Secret)
 	return cfg
 }
 
 func (s *AuthService) loadMailer(ctx context.Context) mailer.Mailer {
 	var host, user, pass, from string
 	var port int
-	_ = s.settingRepo.GetSettingValue(ctx, "security.smtp_host", &host)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.smtp_port", &port)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.smtp_username", &user)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.smtp_password", &pass)
-	_ = s.settingRepo.GetSettingValue(ctx, "security.smtp_from", &from)
+	var ssl, skipVerify bool
+	s.opt(ctx, "security.smtp_host", &host)
+	s.opt(ctx, "security.smtp_port", &port)
+	s.opt(ctx, "security.smtp_username", &user)
+	s.opt(ctx, "security.smtp_password", &pass)
+	s.opt(ctx, "security.smtp_from", &from)
+	s.opt(ctx, "security.smtp_ssl", &ssl)
+	s.opt(ctx, "security.smtp_insecure_skip_verify", &skipVerify)
 	return mailer.New(mailer.Config{
-		Host:     host,
-		Port:     port,
-		Username: user,
-		Password: pass,
-		From:     from,
+		Host:               host,
+		Port:               port,
+		Username:           user,
+		Password:           pass,
+		From:               from,
+		SSL:                ssl,
+		InsecureSkipVerify: skipVerify,
 	})
 }
 
 // Register creates a new user
 func (s *AuthService) Register(ctx context.Context, req RegisterRequest, ip string) (*models.User, error) {
 	var registrationEnabled bool
-	if err := s.settingRepo.GetSettingValue(ctx, "auth.registration_enabled", &registrationEnabled); err == nil && !registrationEnabled {
-		return nil, ErrRegistrationClosed
+	s.opt(ctx, "auth.registration_enabled", &registrationEnabled)
+	// default open when unset
+	if s.settings != nil {
+		var probe interface{}
+		if err := s.settings.GetSettingValue(ctx, "auth.registration_enabled", &probe); err == nil {
+			if !registrationEnabled {
+				return nil, ErrRegistrationClosed
+			}
+		}
 	}
 
 	isBlacklisted, _ := s.accessListRepo.IsListed(ctx, "blacklist", "ip", ip)
@@ -127,7 +150,7 @@ func (s *AuthService) Register(ctx context.Context, req RegisterRequest, ip stri
 
 	// Email verification code (pluggable via SMTP settings)
 	var emailVerificationEnabled bool
-	_ = s.settingRepo.GetSettingValue(ctx, "security.email_verification", &emailVerificationEnabled)
+	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
 	if emailVerificationEnabled {
 		if req.VerificationCode == "" {
 			return nil, ErrInvalidCode
@@ -220,7 +243,7 @@ func (s *AuthService) GetUserPermissions(ctx context.Context, userID string) ([]
 // SendVerificationCode sends a registration verification code to email.
 func (s *AuthService) SendVerificationCode(ctx context.Context, email string) error {
 	var emailVerificationEnabled bool
-	_ = s.settingRepo.GetSettingValue(ctx, "security.email_verification", &emailVerificationEnabled)
+	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
 	if !emailVerificationEnabled {
 		return fmt.Errorf("email verification is disabled")
 	}
@@ -244,7 +267,7 @@ func (s *AuthService) SendVerificationCode(ctx context.Context, email string) er
 	}
 
 	siteName := "UniBlack"
-	_ = s.settingRepo.GetSettingValue(ctx, "site.name", &siteName)
+	s.opt(ctx, "site.name", &siteName)
 
 	m := s.loadMailer(ctx)
 	return m.Send(ctx, mailer.Message{

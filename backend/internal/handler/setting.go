@@ -28,14 +28,19 @@ func (h *SystemSettingHandler) GetPublicSettings(c echo.Context) error {
 	return c.JSON(http.StatusOK, settings)
 }
 
-// GetAllSettings returns all settings as a flat array (admin only)
+// GetAllSettings returns schema + values for admin console (NewAPI-style options).
 func (h *SystemSettingHandler) GetAllSettings(c echo.Context) error {
-	settings, err := h.settingService.GetAllSettings(c.Request().Context())
+	admin, err := h.settingService.GetAdminSettings(c.Request().Context())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	return c.JSON(http.StatusOK, admin)
+}
+
+// GetSettingsSchema returns option catalog only (for building dynamic forms).
+func (h *SystemSettingHandler) GetSettingsSchema(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"settings": settings,
+		"schema": h.settingService.Catalog(),
 	})
 }
 

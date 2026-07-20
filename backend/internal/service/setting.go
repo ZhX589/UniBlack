@@ -4,69 +4,195 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
+	"github.com/ZhX589/UniBlack/backend/internal/setting"
 )
 
 var (
 	ErrSettingNotFound = errors.New("setting not found")
 )
 
-// SystemSettingService handles system setting business logic
+// SystemSettingService handles system settings (NewAPI OptionMap style).
+// Layer: env defaults → memory cache → DB override → console/API.
 type SystemSettingService struct {
 	settingRepo    *repository.SystemSettingRepository
 	accessListRepo *repository.AccessListRepository
 	auditRepo      *repository.AuditLogRepository
+	cache          *setting.Cache
 }
 
-// NewSystemSettingService creates a new system setting service
+// NewSystemSettingService creates a service and loads options from DB onto env defaults.
 func NewSystemSettingService(
 	settingRepo *repository.SystemSettingRepository,
 	accessListRepo *repository.AccessListRepository,
 	auditRepo *repository.AuditLogRepository,
 ) *SystemSettingService {
-	return &SystemSettingService{
+	s := &SystemSettingService{
 		settingRepo:    settingRepo,
 		accessListRepo: accessListRepo,
 		auditRepo:      auditRepo,
+		cache:          setting.NewCache(),
 	}
+	return s
 }
 
-// GetSetting retrieves a setting by key
+// Bootstrap merges DB into cache and ensures default keys exist in DB (idempotent).
+func (s *SystemSettingService) Bootstrap(ctx context.Context) error {
+	raw, err := s.settingRepo.LoadRawMap(ctx)
+	if err != nil {
+		log.Printf("Warning: load settings from DB: %v", err)
+		raw = map[string]string{}
+	}
+	// Ensure every catalog/default key has a DB row (migration may be older)
+	for k, v := range setting.DefaultMap() {
+		if _, ok := raw[k]; !ok {
+			if err := s.settingRepo.SetRawJSON(ctx, k, v, descFor(k), nil); err != nil {
+				log.Printf("Warning: seed setting %s: %v", k, err)
+				continue
+			}
+			raw[k] = v
+		}
+	}
+	s.cache.Merge(raw)
+	return nil
+}
+
+func descFor(key string) *string {
+	if m := setting.Meta(key); m != nil && m.Description != "" {
+		d := m.Description
+		return &d
+	}
+	if m := setting.Meta(key); m != nil {
+		d := m.Label
+		return &d
+	}
+	return nil
+}
+
+// Cache exposes the in-memory option map for other services.
+func (s *SystemSettingService) Cache() *setting.Cache {
+	return s.cache
+}
+
+// GetSetting retrieves a setting by key (DB).
 func (s *SystemSettingService) GetSetting(ctx context.Context, key string) (*models.SystemSetting, error) {
 	return s.settingRepo.GetSetting(ctx, key)
 }
 
-// GetSettingValue retrieves a setting value by key
+// GetSettingValue decodes option: prefers cache, falls back to DB then env default.
 func (s *SystemSettingService) GetSettingValue(ctx context.Context, key string, dest interface{}) error {
-	return s.settingRepo.GetSettingValue(ctx, key, dest)
+	if s.cache != nil {
+		if err := s.cache.Decode(key, dest); err == nil {
+			return nil
+		}
+	}
+	if err := s.settingRepo.GetSettingValue(ctx, key, dest); err == nil {
+		return nil
+	}
+	// env/default map
+	if raw, ok := setting.DefaultMap()[key]; ok {
+		return json.Unmarshal([]byte(raw), dest)
+	}
+	return ErrSettingNotFound
 }
 
-// GetAllSettings retrieves all settings as a flat list (admin UI).
-// Secret fields are redacted in the value payload.
+// Catalog returns option schema for admin console (NewAPI-like rich options).
+func (s *SystemSettingService) Catalog() []setting.OptionMeta {
+	return setting.Catalog
+}
+
+// AdminSettingsResponse is console payload: schema + values.
+type AdminSettingsResponse struct {
+	Schema   []setting.OptionMeta   `json:"schema"`
+	Settings []AdminSettingRow      `json:"settings"`
+	ByKey    map[string]interface{} `json:"values"`
+}
+
+// AdminSettingRow is one row for the console table.
+type AdminSettingRow struct {
+	Key         string `json:"key"`
+	Value       string `json:"value"` // JSON text; secrets redacted
+	Category    string `json:"category,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Label       string `json:"label,omitempty"`
+	Description string `json:"description,omitempty"`
+	Secret      bool   `json:"secret"`
+	Configured  bool   `json:"configured,omitempty"` // for secrets: whether a real value is set
+}
+
+// GetAdminSettings builds schema + values for control panel.
+func (s *SystemSettingService) GetAdminSettings(ctx context.Context) (*AdminSettingsResponse, error) {
+	snap := s.cache.Snapshot()
+	// refresh secrets knowledge from DB for "configured" flag
+	dbMap, _ := s.settingRepo.LoadRawMap(ctx)
+
+	rows := make([]AdminSettingRow, 0, len(setting.Catalog))
+	values := make(map[string]interface{})
+	for _, meta := range setting.Catalog {
+		raw, ok := snap[meta.Key]
+		if !ok {
+			raw = setting.DefaultMap()[meta.Key]
+		}
+		row := AdminSettingRow{
+			Key:         meta.Key,
+			Value:       raw,
+			Category:    meta.Category,
+			Type:        meta.Type,
+			Label:       meta.Label,
+			Description: meta.Description,
+			Secret:      meta.Secret,
+		}
+		if meta.Secret {
+			// configured if non-empty string in DB/cache
+			var str string
+			_ = json.Unmarshal([]byte(raw), &str)
+			if str == "" && dbMap != nil {
+				if dbr, ok := dbMap[meta.Key]; ok {
+					_ = json.Unmarshal([]byte(dbr), &str)
+				}
+			}
+			row.Configured = str != ""
+			row.Value = `"••••••••"`
+			values[meta.Key] = map[string]interface{}{
+				"configured": row.Configured,
+				"redacted":   true,
+			}
+		} else {
+			var decoded interface{}
+			if err := json.Unmarshal([]byte(raw), &decoded); err == nil {
+				values[meta.Key] = decoded
+			} else {
+				values[meta.Key] = raw
+			}
+		}
+		rows = append(rows, row)
+	}
+	return &AdminSettingsResponse{
+		Schema:   setting.Catalog,
+		Settings: rows,
+		ByKey:    values,
+	}, nil
+}
+
+// GetAllSettings flat list for backward-compatible admin UI.
 func (s *SystemSettingService) GetAllSettings(ctx context.Context) ([]models.SystemSetting, error) {
-	settings, err := s.settingRepo.GetAllSettings(ctx)
+	admin, err := s.GetAdminSettings(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range settings {
-		if isSecretSettingKey(settings[i].Key) {
-			settings[i].Value = `"••••••••"`
-		}
+	out := make([]models.SystemSetting, 0, len(admin.Settings))
+	for _, row := range admin.Settings {
+		desc := row.Description
+		out = append(out, models.SystemSetting{
+			Key:         row.Key,
+			Value:       row.Value,
+			Description: &desc,
+		})
 	}
-	return settings, nil
-}
-
-func isSecretSettingKey(key string) bool {
-	switch key {
-	case "security.smtp_password",
-		"security.captcha_secret_key",
-		"auth.oauth_github_client_secret":
-		return true
-	default:
-		return false
-	}
+	return out, nil
 }
 
 // UpdateSettingRequest represents a setting update request
@@ -75,101 +201,71 @@ type UpdateSettingRequest struct {
 	Value interface{} `json:"value"`
 }
 
-// UpdateSettings updates multiple settings
+// UpdateSettings updates multiple settings (DB + memory cache).
 func (s *SystemSettingService) UpdateSettings(ctx context.Context, settings []UpdateSettingRequest, updatedBy string) error {
-	for _, setting := range settings {
-		// Skip redacted secret placeholders so admin UI re-save does not wipe secrets
-		if isSecretSettingKey(setting.Key) {
-			if str, ok := setting.Value.(string); ok && (str == "" || str == "••••••••") {
+	for _, item := range settings {
+		if setting.IsSecret(item.Key) {
+			if str, ok := item.Value.(string); ok && (str == "" || str == "••••••••") {
 				continue
 			}
 		}
-		if err := s.settingRepo.SetSetting(ctx, setting.Key, setting.Value, nil, &updatedBy); err != nil {
+		valueJSON, err := json.Marshal(item.Value)
+		if err != nil {
 			return err
 		}
+		if err := s.settingRepo.SetRawJSON(ctx, item.Key, string(valueJSON), descFor(item.Key), &updatedBy); err != nil {
+			return err
+		}
+		s.cache.Set(item.Key, string(valueJSON))
 	}
-
-	// Create audit log
 	s.createAuditLog(ctx, updatedBy, "update", "system_settings", nil, nil)
-
 	return nil
 }
 
-// GetSiteConfig returns site configuration
-func (s *SystemSettingService) GetSiteConfig(ctx context.Context) (map[string]interface{}, error) {
+// GetPublicSettings returns settings safe for unauthenticated clients.
+func (s *SystemSettingService) GetPublicSettings(ctx context.Context) (map[string]interface{}, error) {
+	_ = ctx
 	config := make(map[string]interface{})
-
-	// Get site settings
-	siteKeys := []string{"site.name", "site.description", "site.theme_color", "site.logo_url", "site.contact_email"}
-	for _, key := range siteKeys {
+	for _, meta := range setting.Catalog {
+		if !meta.Public {
+			continue
+		}
 		var value interface{}
-		if err := s.settingRepo.GetSettingValue(ctx, key, &value); err == nil {
-			config[key] = value
+		if err := s.GetSettingValue(ctx, meta.Key, &value); err == nil {
+			config[meta.Key] = value
 		}
 	}
-
 	return config, nil
 }
 
-// GetPublicSettings returns settings that are safe to expose publicly
-func (s *SystemSettingService) GetPublicSettings(ctx context.Context) (map[string]interface{}, error) {
-	config := make(map[string]interface{})
-
-	// Site settings
-	siteKeys := []string{"site.name", "site.description", "site.theme_color", "site.logo_url"}
-	for _, key := range siteKeys {
-		var value interface{}
-		if err := s.settingRepo.GetSettingValue(ctx, key, &value); err == nil {
-			config[key] = value
-		}
-	}
-
-	// Security settings (without secrets)
-	var captchaEnabled bool
-	s.settingRepo.GetSettingValue(ctx, "security.captcha_enabled", &captchaEnabled)
-	config["security.captcha_enabled"] = captchaEnabled
-
-	var captchaProvider string
-	s.settingRepo.GetSettingValue(ctx, "security.captcha_provider", &captchaProvider)
-	config["security.captcha_provider"] = captchaProvider
-
-	var captchaSiteKey string
-	s.settingRepo.GetSettingValue(ctx, "security.captcha_site_key", &captchaSiteKey)
-	config["security.captcha_site_key"] = captchaSiteKey
-
-	var registrationEnabled bool
-	s.settingRepo.GetSettingValue(ctx, "auth.registration_enabled", &registrationEnabled)
-	config["auth.registration_enabled"] = registrationEnabled
-
-	// Email verification setting
-	var emailVerification bool
-	s.settingRepo.GetSettingValue(ctx, "security.email_verification", &emailVerification)
-	config["security.email_verification"] = emailVerification
-
-	return config, nil
+// GetSiteConfig returns site branding keys.
+func (s *SystemSettingService) GetSiteConfig(ctx context.Context) (map[string]interface{}, error) {
+	return s.GetPublicSettings(ctx)
 }
 
 // IsInitialized checks if the system has been initialized
 func (s *SystemSettingService) IsInitialized(ctx context.Context) bool {
-	return s.settingRepo.IsInitialized(ctx)
+	var value bool
+	if err := s.GetSettingValue(ctx, setting.KeySystemInitialized, &value); err != nil {
+		return false
+	}
+	return value
 }
 
-// InitializeSystem initializes the system with admin password
-func (s *SystemSettingService) InitializeSystem(ctx context.Context, adminPassword string) error {
-	// This will be called by auth service to set admin password
-	// Mark system as initialized
-	return s.settingRepo.SetSetting(ctx, "system.initialized", true, nil, nil)
+// InitializeSystem marks system as initialized.
+func (s *SystemSettingService) InitializeSystem(ctx context.Context, _ string) error {
+	return s.UpdateSettings(ctx, []UpdateSettingRequest{
+		{Key: setting.KeySystemInitialized, Value: true},
+	}, "system")
 }
 
 // AccessList methods
 
-// CreateAccessListEntry creates a new access list entry
 func (s *SystemSettingService) CreateAccessListEntry(ctx context.Context, entry *models.AccessList, createdBy string) error {
 	entry.CreatedBy = &createdBy
 	return s.accessListRepo.CreateEntry(ctx, entry)
 }
 
-// ListAccessListEntries lists access list entries
 func (s *SystemSettingService) ListAccessListEntries(ctx context.Context, page, pageSize int, listType, target string) ([]models.AccessList, int64, error) {
 	if page < 1 {
 		page = 1
@@ -181,28 +277,24 @@ func (s *SystemSettingService) ListAccessListEntries(ctx context.Context, page, 
 	return s.accessListRepo.ListEntries(ctx, offset, pageSize, listType, target)
 }
 
-// DeleteAccessListEntry deletes an access list entry
 func (s *SystemSettingService) DeleteAccessListEntry(ctx context.Context, id string) error {
 	return s.accessListRepo.DeleteEntry(ctx, id)
 }
 
-// IsListed checks if a value is in a specific list
 func (s *SystemSettingService) IsListed(ctx context.Context, listType, target, value string) (bool, error) {
 	return s.accessListRepo.IsListed(ctx, listType, target, value)
 }
 
-// createAuditLog creates an audit log entry
 func (s *SystemSettingService) createAuditLog(ctx context.Context, userID, action, resourceType string, resourceID *string, oldValues map[string]interface{}) {
 	changesJSON, _ := json.Marshal(oldValues)
 	changes := make(map[string]interface{})
-	json.Unmarshal(changesJSON, &changes)
-
-	log := &models.AuditLog{
+	_ = json.Unmarshal(changesJSON, &changes)
+	logEntry := &models.AuditLog{
 		UserID:       &userID,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   resourceID,
 		Changes:      changes,
 	}
-	s.auditRepo.CreateAuditLog(ctx, log)
+	_ = s.auditRepo.CreateAuditLog(ctx, logEntry)
 }

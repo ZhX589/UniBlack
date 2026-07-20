@@ -25,9 +25,29 @@ export default function AdminSettingsPage() {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
-      const flat = flattenAdminSettings(data)
-      setRows(flat)
-      setMap(adminSettingsToMap(flat))
+      // Prefer NewAPI-style { schema, settings, values }
+      if (data?.values && typeof data.values === 'object') {
+        const values: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(data.values as Record<string, unknown>)) {
+          if (v && typeof v === 'object' && 'redacted' in (v as object)) {
+            values[k] = ''
+          } else {
+            values[k] = v
+          }
+        }
+        setMap(values)
+        const flat = Array.isArray(data.settings)
+          ? data.settings.map((row: any) => ({
+              key: row.key,
+              value: typeof row.value === 'string' ? row.value : JSON.stringify(row.value),
+            }))
+          : []
+        setRows(flat)
+      } else {
+        const flat = flattenAdminSettings(data)
+        setRows(flat)
+        setMap(adminSettingsToMap(flat))
+      }
     } catch (error) {
       console.error('Failed to fetch settings:', error)
     } finally {

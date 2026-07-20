@@ -600,7 +600,9 @@ API 应建立在稳定的数据模型之上。
 
 ## Status
 
-- **实现中（2026-07）**：控制台 + 注册增强 + 可插拔 captcha/mailer + 对象/案件详情页
+- **已实现（2026-07）**：控制台 + 注册增强 + NewAPI 风格 OptionMap + 可插拔 captcha/mailer + 详情页
+
+详见 `docs/configuration.md`。
 
 ---
 
@@ -608,23 +610,27 @@ API 应建立在稳定的数据模型之上。
 
 ## Why
 
-Phase 11 落地后发现：详情路由缺失导致 404；注册页 settings 未加载时闪现「已关闭」；邮箱/人机验证仅有开关未真正对接可配置 Provider。
+Phase 11 落地后发现：详情路由缺失导致 404；注册页 settings 未加载时闪现「已关闭」；邮箱/人机验证需「配置文件 + 接口 + 控制台」完整闭环（参考 NewAPI Option）。
 
 ## Goal
 
 - 补齐 Subject / Case 前端详情页
 - 注册页 loading 态与配置驱动的 captcha 组件
+- `internal/setting`：Catalog + env 默认值 + 内存 OptionMap + DB 覆盖
 - `internal/captcha`、`internal/mailer` 可插拔实现
 - `verification_codes` 迁移与发送/校验接口
-- 控制台展示 SMTP / captcha secret（脱敏）配置项
+- 控制台 / admin API：`schema` + 脱敏 secrets + SMTP/captcha 全项
+- `.env.example` 与 `docs/configuration.md` 文档
 
 ## Verification
 
 - 列表链到 `/subjects/:id` 可打开
 - 公开案件链到 `/cases/:id`；pending 案件返回明确未公开提示
 - 注册页先显示「加载注册配置」
+- `GET /api/admin/settings` 返回 schema + settings
 - 开启邮箱验证后发送验证码可写入 DB（SMTP 未配时走 LogMailer）
 - 开启 captcha 且配置 secret 后校验走对应 Provider
+- 环境变量可覆盖默认项，控制台保存后无需重启
 
 ---
 
