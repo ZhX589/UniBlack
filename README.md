@@ -20,7 +20,37 @@ UniBlack 支持
 
 ## 快速上手
 
-可以按照以下方式进行部署
+### 前置要求
+
+- [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)
+- [Git](https://git-scm.com/)
+
+### 启动开发环境
+
+```bash
+# 克隆仓库
+git clone https://github.com/ZhX589/UniBlack.git
+cd UniBlack
+
+# 复制环境变量模板
+cp .env.example .env
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env.local
+
+# 启动所有服务
+docker compose up -d
+
+# 访问应用
+# 前端: http://localhost:3000
+# 后端API: http://localhost:8080
+# MinIO控制台: http://localhost:9001 (minioadmin/minioadmin)
+```
+
+### 停止服务
+
+```bash
+docker compose down
+```
 
 ## 文档
 
