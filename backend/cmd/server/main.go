@@ -23,6 +23,9 @@ func main() {
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
+	// Rate limiting
+	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
+
 	// Connect to database
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -68,6 +71,7 @@ func main() {
 	caseRepo := repository.NewCaseRepository(database)
 	evidenceRepo := repository.NewEvidenceRepository(database)
 	submissionRepo := repository.NewSubmissionRepository(database)
+	appealRepo := repository.NewAppealRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
 
 	// Initialize services
@@ -76,6 +80,7 @@ func main() {
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
+	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
 
 	// Initialize handlers
 	authHandler := handler.NewAuthHandler(authService)
@@ -83,6 +88,8 @@ func main() {
 	caseHandler := handler.NewCaseHandler(caseService)
 	evidenceHandler := handler.NewEvidenceHandler(evidenceService)
 	submissionHandler := handler.NewSubmissionHandler(submissionService)
+	appealHandler := handler.NewAppealHandler(appealService)
+	publicHandler := handler.NewPublicAPIHandler(subjectService, caseService, evidenceService)
 
 	// Public routes
 	e.GET("/", func(c echo.Context) error {
@@ -95,9 +102,15 @@ func main() {
 	authGroup.POST("/login", authHandler.Login)
 	authGroup.POST("/refresh", authHandler.RefreshToken)
 
-	// Public search (no auth required)
-	e.GET("/api/search", subjectHandler.SearchSubjects)
-	e.GET("/api/subjects/lookup", subjectHandler.GetSubjectByIdentifier)
+	// Public API routes (no auth required)
+	publicGroup := e.Group("/api/v1")
+	publicGroup.GET("/search", publicHandler.SearchSubjects)
+	publicGroup.GET("/lookup", publicHandler.LookupSubject)
+	publicGroup.GET("/subjects", publicHandler.ListSubjects)
+	publicGroup.GET("/subjects/:id", publicHandler.GetSubject)
+	publicGroup.GET("/subjects/:id/cases", publicHandler.GetCasesBySubject)
+	publicGroup.GET("/cases/:id", publicHandler.GetCase)
+	publicGroup.GET("/statistics", publicHandler.GetStatistics)
 
 	// Protected routes
 	apiGroup := e.Group("/api")
@@ -146,6 +159,16 @@ func main() {
 	submissionGroup.GET("/:id", submissionHandler.GetSubmission)
 	submissionGroup.DELETE("/:id", submissionHandler.DeleteSubmission)
 
+	// Appeal routes (authenticated)
+	appealGroup := apiGroup.Group("/appeals")
+	appealGroup.POST("", appealHandler.CreateAppeal)
+	appealGroup.GET("", appealHandler.ListAppeals)
+	appealGroup.GET("/:id", appealHandler.GetAppeal)
+	appealGroup.DELETE("/:id", appealHandler.DeleteAppeal)
+
+	// Case appeal routes
+	caseGroup.GET("/:id/appeals", appealHandler.GetAppealsByCaseID)
+
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")
 	reviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
@@ -154,6 +177,10 @@ func main() {
 	submissionReviewGroup := submissionGroup.Group("/:id/review")
 	submissionReviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
 	submissionReviewGroup.POST("", submissionHandler.ReviewSubmission)
+
+	appealReviewGroup := appealGroup.Group("/:id/review")
+	appealReviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
+	appealReviewGroup.POST("", appealHandler.ReviewAppeal)
 
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
