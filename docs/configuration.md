@@ -87,5 +87,39 @@
 3. 若 `security.captcha_enabled`：前端加载对应 Provider 脚本，提交 `captcha_token`。  
 4. `POST /api/auth/register` 服务端按配置校验 captcha secret 与验证码后创建用户。
 
-未配置 SMTP 时默认 **LogMailer**（日志打印验证码，便于开发）。  
-开启 captcha 但未配置 secret 时注册返回明确错误，避免静默放行。
+当前代码未配置 SMTP 时默认 **LogMailer**（日志打印随机验证码，便于开发）；这属于旧实现行为，不满足 Phase 13 的最终目标。
+当前代码开启 captcha 且配置 provider 后会调用对应第三方 siteverify；这同样属于旧实现行为，不满足 Phase 13 的“仅演示 captcha”目标。
+
+Phase 13 实施完成前，不应把当前配置行为描述为“生产就绪的人机验证”或“生产缺 SMTP 时强制失败”。
+
+---
+
+## Phase 13 目标验证边界（待实施）
+
+> 当前代码仍会按 `CAPTCHA_PROVIDER` 调用 Turnstile、reCAPTCHA 或 hCaptcha。本节记录已确认的后续设计，不代表这些行为已经变更。
+
+### 演示人机验证
+
+Phase 13 将把项目运行行为调整为内置的演示验证卡：用户确认“我不是自动程序”后由 UniBlack 服务端签发短期、单次、绑定用途的演示令牌。项目本身将**不加载第三方 captcha 脚本，也不请求第三方验证端点**。
+
+控制台仍保留以下配置项，作为部署者未来接入真实 Provider 的配置契约：
+
+- `security.captcha_enabled`
+- `security.captcha_provider`
+- `security.captcha_site_key`
+- `security.captcha_secret_key`
+
+在演示模式下，控制台必须明确显示“仅保存接入配置，本项目运行演示验证”，不得把保存 Site Key/Secret 误称为真实校验已生效。
+
+### 邮箱验证码
+
+Phase 13 将按环境区分：
+
+| 环境 | 验证码行为 |
+| --- | --- |
+| `APP_ENV=development` | 仅接受固定 `123456`，不发送邮件，也不生成随机真实码 |
+| 非开发环境 | 必须配置 SMTP；生成随机、单次使用、10 分钟有效验证码；缺少 SMTP 时明确失败 |
+
+验证码用途将区分 `register`、`submission`、`appeal`，并分别限流；不同用途的验证码不可互用。
+
+完整对象/事件/证据、默认发布、处罚与导出设计见 `docs/compose/specs/2026-07-20-subject-event-governance-design.md`。

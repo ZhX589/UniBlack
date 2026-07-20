@@ -130,7 +130,16 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## 文档
 
-详细文档可以参考 `./docs`
+详细文档可以参考 `./docs`：
+
+- `docs/roadmap.md`：开发阶段、目标与验收标准
+- `docs/configuration.md`：站点、注册、邮件与人机验证配置
+- `DESIGN.md`：前端视觉、交互和可访问性规范
+- `docs/frontend-gap-analysis.md`：当前实现与 roadmap 的滚动差距台账
+- `docs/implementation-gap-analysis.md`：后端、前端、存储、验证与治理目标的实现差距
+- `docs/compose/specs/2026-07-20-dynamic-frontend-design.md`：动态前端设计规格
+- `docs/compose/plans/2026-07-20-dynamic-frontend.md`：分阶段实施计划（尚未实施）
+- `docs/compose/plans/2026-07-20-subject-event-governance-execution.md`：基于当前差距的开发顺序（尚未实施）
 
 ## 开发
 

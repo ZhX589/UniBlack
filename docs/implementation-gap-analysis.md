@@ -1,0 +1,175 @@
+# UniBlack 实现与设计目标差距分析
+
+> 基线：2026-07-20，代码基线 `1719cab`；工作区后续未包含功能实现提交。本文件记录当前真实实现与已确认设计目标之间的差距，不修改未来路线。
+
+## 阅读规则
+
+- `已实现`：代码存在，并有本地/CI/接口/构建证据。
+- `部分实现`：主路径存在，但行为、数据完整性、权限或运行可靠性不满足设计。
+- `未实现`：只有旧接口、占位代码、文档设想或页面入口。
+- `过时文档`：文档描述与代码实际行为不一致，需要修正描述，但不改变未来目标。
+
+## 目标文档真源
+
+- Phase 12 动态前端设计：`docs/compose/specs/2026-07-20-dynamic-frontend-design.md`
+- Phase 13 对象/事件/验证/治理设计：`docs/compose/specs/2026-07-20-subject-event-governance-design.md`
+- Phase 13 原始实施任务计划：`docs/compose/plans/2026-07-20-subject-event-governance.md`
+- 本轮开发排序计划：`docs/compose/plans/2026-07-20-subject-event-governance-execution.md`
+- 前端视觉规范：`DESIGN.md`
+
+本文件与现有路线的关系：只记录差距、阻塞点、证据和执行顺序；不删除、不重写 Phase 12/13 的目标。
+
+## 总体判断
+
+| 领域 | 当前状态 | 主要证据 | 结论 |
+| --- | --- | --- | --- |
+| 对象模型 | 部分实现 | `Subject` 存在，但只有 `display_name`、UUID、`Identifiers` | 需要新增公开 ID、账号模型和自定义属性；不能直接把旧 Identifier 当作新 Account |
+| 事件模型 | 未实现 | 核心实体仍是 `models.Case`，表为 `cases` | Phase 13 的 Event 目标尚未进入代码；必须走兼容迁移 |
+| 对象通用名规则 | 未实现 | `SubmissionService` 审核时硬编码 `DisplayName: "待补充"` | 不能满足空名自动取第一条账号用户名 |
+| 公开对象 ID | 未实现 | Subject 只有数据库 UUID | 尚无 `UBS_<ULID>`、唯一约束、URL 和导出命名 |
+| 账号字段 | 部分实现 | `Identifier` 有 platform/account_type/value/label | 没有 username/account_id/custom_attributes 的独立模型，也没有新规则的去重策略 |
+| 默认发布 | 未实现 | Submission 默认 `pending`，审核通过才创建 Case | 与 Phase 13 默认发布相反；需要新事务入口，旧审核接口要保留迁移窗口 |
+| 事件证据 | 部分实现 | Evidence 表支持 file/link/text；服务使用 `case_id` | 证据仍绑定 Case；文本没有写入 txt；文件 key 使用时间戳；本地上传返回占位 URL |
+| 真实文件存储 | 未实现 | `LocalStorage.Upload` 只返回 URL，不写文件 | 无法生成可验证 JSON 包，也没有可恢复的证据文件 |
+| 导出/导入包 | 未实现 | 无 export 包、manifest、README.txt 或 import preview | 必须在索引和存储完成后开发，不能先写静态导出器 |
+| 申诉结论 | 部分实现 | Appeal 只有 approved/rejected；按 Case 处理 | 没有 upheld/corrected/withdrawn/malicious_submission 语义和事件版本 |
+| 分级处罚 | 未实现 | 没有 sanctions 表、服务或 API | 默认发布前必须先实现有效处罚检查，否则治理闭环不成立 |
+| 人机验证 | 与目标冲突 | `captcha.NewProvider` 会请求三家第三方 siteverify | 当前不是“演示 captcha”；需要替换运行路径，但保留配置契约字段 |
+| 邮箱开发模式 | 与目标冲突 | SMTP host 空时使用 `LogMailer` 并生成/记录随机码 | 目标是 development 固定 `123456`，不能把 LogMailer 作为生产降级 |
+| 邮箱生产模式 | 部分实现 | SMTPMailer 支持 SSL/认证；缺 host 不失败 | 缺 SMTP 必须明确失败，purpose/频率/环境边界未完成 |
+| 配置 OptionMap | 已实现基础 | `setting/options.go`、Bootstrap、schema/settings/values | 可复用配置基础存在；需要补 demo mode、APP_ENV、submission/appeal 文件限制和治理配置 |
+| 统一控制台 | 部分实现 | admin settings/users/access-lists 页面和 admin 路由存在 | 没有治理、处罚、导出、品牌分组和验证状态页面；前端壳层仍旧静态 |
+| 前端动态化 | 未实现 | 约 23 处直接 fetch、14 处 localStorage、16 个内部 raw anchor | Phase 12 仍未实施，不能用现有控制台页面作为完成证据 |
+| 测试 | 未实现 | 未见 frontend unit/e2e；后端功能测试不足 | 需要先补领域纯函数测试，再做集成和浏览器验收 |
+| 部署可靠性 | 部分实现 | Docker 使用 `npm install`；前端 rewrite 依赖构建时环境；LocalStorage 不写盘 | Phase 12/13 目标所需的可复现构建和持久化存储尚未满足 |
+
+## 后端逐项差距
+
+### 1. Subject 与 Account
+
+当前 `Subject`：
+
+- UUID 作为唯一 ID，没有 `public_id`。
+- 关联的是 `[]Identifier`，字段只有 `platform`、`account_type`、`value`、`label`。
+- 没有独立 `accounts` 表，不能同时表达 username、account_id 和有限 custom attributes。
+- 现有唯一约束仍是旧 `identifiers` 设计，不能直接代表 Phase 13 的账号冲突策略。
+
+目标需要新增可回滚 migration 和兼容 adapter。旧 `identifiers` 不能直接删除，原因是现有公开查询、subject 详情、提交和历史数据仍依赖它。
+
+### 2. Case 到 Event
+
+当前代码仍在以下位置使用 Case：
+
+- `models.Case` 和 `cases` 表。
+- `CaseRepository`、`CaseService`、`CaseHandler`。
+- `Submission.CaseID`、`Evidence.CaseID`、`Appeal.CaseID`。
+- `/api/cases`、`/api/v1/cases`、subject cases 路由。
+
+这不是简单的改名任务。需要同时处理外键、公开 API、证据关联、申诉关联、历史数据和前端文案。Phase 13 已明确要求先新增结构、迁移读取路径、保留旧 API 兼容窗口，因此当前差距是“整体迁移未开始”，不是“漏改几个字符串”。
+
+### 3. Submission 行为
+
+当前 `CreateSubmission`：
+
+- 接收 `subject_identifiers` 和 `reason`，没有 display name、账号 ID、事件时间、证据清单。
+- 默认状态为 `pending`。
+- 审核通过后才创建 Subject 和 Case。
+- 审核逻辑硬编码 Subject 名称为“待补充”。
+
+Phase 13 需要新增独立的 verified publish 入口，事务内创建对象、账号、事件、审计；旧 submission review 作为迁移期兼容路径保留。当前不能通过把 `pending` 改成 `published` 来完成，因为数据结构和验证前置条件也没有实现。
+
+### 4. Evidence 与 Storage
+
+当前 Evidence 已有 `file/link/text` 类型，但：
+
+- 外键仍为 `case_id`。
+- 文件 key 为 `evidence/<caseID>/<timestamp>.<ext>`，不是对象公开 ID 文件名。
+- `LocalStorage.Upload` 没有写入 `basePath`，只返回 placeholder URL。
+- 没有持久化明确 `storage_key` 和原始文件名字段。
+- 文本证据仍通过普通 JSON 请求创建，没有转 UTF-8 `.txt` 文件。
+- 没有 200 KiB 文本限制、manifest、哈希包校验和导入预览。
+
+因此导出功能必须排在实际 Storage 和证据索引之后，不能直接从现有 URL 生成“看似完整”的 JSON 包。
+
+### 5. Appeal 与 Sanction
+
+当前 Appeal：
+
+- 只能关联 Case。
+- 只允许 `approved`/`closed` Case。
+- 结论只有 `approved`/`rejected`。
+- approved 处理只调用一次 Case 更新，没有明确修正、撤销、恶意提交和版本记录。
+
+当前没有任何处罚模型。默认发布策略若先上线而不先实现处罚查询，会形成“发布容易、治理无法落地”的不完整闭环，因此处罚检查必须在发布入口之前完成。
+
+### 6. Captcha 与邮箱
+
+当前 captcha 明确存在第三方网络调用：
+
+- 后端 `Turnstile`、`Recaptcha`、`HCaptcha` 实现 `postSiteverify`。
+- 前端注册页动态加载三家第三方脚本。
+- Provider 配置选择会改变运行时真实验证行为。
+
+这与 Phase 13 的“仅演示 captcha、不接入真实服务”冲突，需要标记为旧实现，而不是标为已完成。未来路线不变，执行时应：保留配置 Catalog/API/UI 契约，替换运行 provider 为 demo provider，并添加“演示模式”状态说明。
+
+当前邮件：
+
+- `mailer.New` 在 SMTP host 为空时返回 `LogMailer`。
+- AuthService 会生成并存储随机验证码，再通过 LogMailer 输出。
+- SMTPMailer 已有普通 SMTP 和隐式 SSL 支持。
+
+这意味着 SMTP 能力是部分实现，但环境隔离、固定开发码、生产缺失 SMTP 失败、purpose 区分和发送限流都未完成。
+
+## 前端逐项差距
+
+现有 `docs/frontend-gap-analysis.md` 仍然有效，但范围主要覆盖 Phase 12。与 Phase 13 的新增差距如下：
+
+| 页面/能力 | 当前实现 | Phase 13 目标 |
+| --- | --- | --- |
+| `/submit` | 仅有 subject_identifiers/reason 基础表单，页面直接读 token | 对象、账号、事件、证据、验证、默认发布的单页分段表单 |
+| 未登录提交 | 当前页面逻辑不具备设计中的灰态说明和分区禁用 | 说明页 + 灰态上传/发布区 + 登录引导 |
+| 对象页面 | 使用 Subject UUID 和 cases 文案 | 使用公开 `UBS_<ULID>`、账号档案、事件时间线、证据可见性 |
+| 案件详情 | `/cases/[id]` 和“案件”文案 | 事件详情，兼容旧链接但新文案和状态模型使用 Event |
+| 注册 captcha | 动态加载第三方 provider | 内置“我不是自动程序”演示卡，不加载第三方脚本 |
+| 注册邮箱 | 依赖后端现有开关和 LogMailer | development 固定 `123456`，production SMTP 必须配置 |
+| 管理设置 | 基础/安全/登录三 tab | 站点与品牌、注册验证、SMTP、演示 captcha、治理和导入导出统一分组 |
+| 管理治理 | 无处罚、导出、申诉结论页面 | 对象、事件、申诉、处罚、审计、归档统一入口 |
+
+## 过时或需要修正文档
+
+以下不是未来路线变更，而是现状描述需要校正：
+
+1. `docs/configuration.md` 的原始注册链路仍描述真实第三方 captcha 可运行；Phase 13 目标章节已说明这是待实施变更，实施前不能把旧段落当作最终行为。
+2. `docs/roadmap.md` Phase 8/9/11 的“完成”只代表历史功能页面或基础接口存在，不代表 Phase 12/13 的动态壳层、对象事件模型、演示验证和导出治理已经完成。
+3. `README.md` 中的“支持证据管理”“申诉流程”“响应式前端”是能力方向描述，不应理解为 Phase 13 目标已验收。
+4. `docs/frontend-modernization-plan.md` 和 `docs/compose/plans/2026-07-20-dynamic-frontend.md` 是 Phase 12 的设计/计划；它们不覆盖后端对象事件迁移，不可替代 Phase 13 执行计划。
+
+## 不变的未来路线
+
+以下目标保持原样，本文件不做削弱或替换：
+
+- Phase 12：动态前端、Auth/Settings/API 架构、RBAC 导航、Tailwind 设计系统、响应式和构建验收。
+- Phase 13：对象/账号/事件、`UBS_<ULID>`、混合存储、默认发布、JSON 包、申诉更正、分级处罚、演示 captcha、开发固定验证码、生产 SMTP、统一控制台。
+
+## 差距结论
+
+当前最重要的阻塞链为：
+
+```text
+旧 Case 数据模型
+  → 无法可靠表达新 Event/Account
+  → 无法实现对象公开 ID 和默认发布事务
+  → 证据仍无法按对象归档
+  → 无法生成可校验导出包
+  → 申诉和处罚无法作用于正确资源
+```
+
+验证链是另一条独立阻塞链：
+
+```text
+真实第三方 captcha + LogMailer 降级
+  → 不符合演示 captcha / 环境隔离目标
+  → 注册与发布不能共享 Phase 13 验证契约
+```
+
+因此开发顺序不能从 UI 或导出页面开始，必须先完成领域迁移和验证边界。

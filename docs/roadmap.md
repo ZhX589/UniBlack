@@ -634,6 +634,148 @@ Phase 11 落地后发现：详情路由缺失导致 404；注册页 settings 未
 
 ---
 
+# Phase 12 - Dynamic Frontend & Design System
+
+## Status
+
+- **设计完成，待用户确认后实施（2026-07）**。
+- 设计规范：`DESIGN.md`
+- 设计规格：`docs/compose/specs/2026-07-20-dynamic-frontend-design.md`
+- 实施计划：`docs/compose/plans/2026-07-20-dynamic-frontend.md`
+- 差距台账：`docs/frontend-gap-analysis.md`
+
+## Why
+
+Phase 9-11 已建立页面和业务流程，但全局布局仍是静态 MVP：登录后导航不变化、站点名写死、管理入口未按角色隐藏、管理子系统缺少统一入口，且部分站内导航使用原生 anchor。继续逐页增加功能会扩大重复鉴权、API、样式和状态处理，因此必须先稳定动态壳层和设计系统。
+
+## Goal
+
+### 12.1 动态应用壳层
+
+- 根布局消费 public settings 与 session，显示配置化 `site.name`、描述和主题色。
+- 认证状态统一为 loading / anonymous / authenticated；登录后显示用户菜单和退出，退出后立即清理权限入口。
+- 集中式 navigation registry 描述公共、账户和管理入口，并按登录态、角色和功能开关过滤。
+- 站内跳转统一使用 Next `Link`/router，不触发整页刷新。
+- `/admin` 建立统一侧栏/移动抽屉，纳入审核、案件、settings、users、access-lists。
+
+### 12.2 代码与数据架构
+
+- 建立统一 API client、错误类型、401 登出策略和 AbortSignal 支持；token refresh 另行设计，不在本阶段扩展认证协议。
+- 建立 session/public settings provider 与稳定加载状态，避免 hydration 和权限闪烁。
+- 建立 API DTO/adapter，减少页面中的 `any` 和重复响应解析。
+- Server Components 负责可服务端完成的首屏和结构；client components 仅承载交互。
+- 不预先引入重型全局状态库；出现可量化的复杂缓存需求后再评估。
+
+### 12.3 Tailwind 设计系统
+
+- Tailwind 继续通过 PostCSS/Next 构建，禁止 CDN。
+- CSS variables 作为运行时 token 真源，Tailwind theme 映射 neutral/brand/semantic/radius/focus。
+- `site.theme_color` 只更新品牌 token，不改变 success/warning/danger 语义色。
+- 以 Tailwind 构建最小组件集；确有交互可访问性需求时按需采用 shadcn/ui/Radix primitive，不一次性引入完整组件库。
+- 合并重复 globals.css；公共页与管理页共享 token，分别采用品牌表达和后台惯例。
+
+### 12.4 响应式、可访问性与性能
+
+- 验证 375px、768px、1280px；无横向溢出，触控目标至少 44px。
+- 支持键盘、focus-visible、ARIA、语义状态和 WCAG AA 对比度。
+- 动画限制在 120-200ms 的 opacity/transform 状态反馈，并支持 reduced-motion。
+- 不使用大面积 blur、持续动画、parallax 或依赖高性能 GPU 的装饰。
+- 记录 JS bundle 基线；admin-only UI 按路由加载，新增依赖需说明成本。
+
+### 12.5 页面动态化
+
+- 首页接入真实 statistics API，失败时不阻断核心查询。
+- 查询、列表、详情统一 loading/empty/error/pagination 与案件状态文案。
+- 注册继续由 registration/email/captcha 配置驱动。
+- 优化现有举报和管理流程的入口、状态与移动端布局；申诉新业务页面另行规划。
+- 页面新增或变更时，先更新类型化 route/navigation registry 和 gap 台账。
+
+### 12.6 构建与部署
+
+- 开发、CI、Docker 使用 lockfile + `npm ci`，确保依赖可重复。
+- 构建阶段编译 Tailwind；生产 runner 不依赖 Tailwind CDN 或现场编译。
+- 浏览器统一请求相对 `/api`；开发由 Next rewrite，生产由 Nginx 同源反代。
+- CI 覆盖 lint、typecheck、unit、production build；关键角色流程使用 Playwright。
+
+## Verification
+
+- 匿名用户不看到管理；普通用户不看到管理；moderator 仅看到审核相关入口；admin 看到完整管理侧栏。
+- 登录/退出后导航即时更新且无整页刷新；token 过期行为一致。
+- 控制台修改 `site.name` 后前台显示新名称，同时代码/镜像/文档身份仍为 UniBlack。
+- settings 请求失败时使用安全默认值，公开查询仍可使用。
+- settings/users/access-lists 对 admin 均在两次点击内可达。
+- 所有数据页具备 loading、empty、error；首页展示真实统计。
+- 375px 无横向溢出，键盘焦点清晰，触控目标和对比度达标。
+- reduced-motion 下无非必要动画，老旧设备无持续高成本视觉效果。
+- `npm run lint`、typecheck、unit、`npm run build` 和关键 Playwright 流程全部通过。
+- 本地、CI、production Docker 均从同一 lockfile 构建，页面无 Tailwind CDN 请求。
+- `docs/frontend-gap-analysis.md` 中 P0/P1 项只有在实际验证后才可标记为已验证。
+
+## Delivery Order
+
+1. A：测试与可重复构建基线。
+2. B：API、session、settings 动态基础。
+3. C：App Shell、导航 registry、管理布局。
+4. D：Tailwind tokens 与基础组件。
+5. E：逐页动态化与状态统一。
+6. F：部署、性能、文档与发布验收。
+
+当前阶段仅完成设计，不进入上述实现步骤。
+
+## Out of Scope
+
+- JWT 从 localStorage 迁移到 HttpOnly Cookie，以及 token refresh 协议重构。
+- 后端任意菜单、CMS、远程组件和无需发版的页面搭建器。
+- OAuth、申诉页面等新增业务流程。
+- 完整暗色模式；当前不完整暗色规则在实施时先移除，后续独立规划。
+- Phase 11 尚未完成的角色分配、重置密码、名单批量导入导出。
+
+---
+
+# Phase 13 - Subject Event Governance & Portable Archives
+
+## Status
+
+- **设计已确认，待实施（2026-07-20）**。
+- 设计规格：`docs/compose/specs/2026-07-20-subject-event-governance-design.md`
+- 实现差距：`docs/implementation-gap-analysis.md`
+- 开发排序：`docs/compose/plans/2026-07-20-subject-event-governance-execution.md`
+
+## Why
+
+系统的治理对象是“某个人及其相关账号”，而不是独立案件。现有 Case/Submission 模型不能完整表达对象账号、多个事件、可移植证据包、默认公开后的申诉更正和提交者追责。同时，注册验证码与 captcha 的现有实现需按演示验证和生产 SMTP 边界重新设计。
+
+## Goal
+
+- 对外将 Case 统一改称 Event，仍以 Subject（对象）为核心。
+- 每个对象生成不可编辑的 `UBS_<ULID>` 公开 ID；账号支持平台、用户名、账号 ID 与有限自定义属性。
+- 登录验证后的提交默认发布，支持多个事件和文件/文本/链接证据。
+- 为每个对象导出 `manifest.json`、`README.txt` 和哈希可校验的 evidence 文件包；数据库保留检索、关系、治理和审计索引。
+- 申诉可维持、修正、撤销或确认恶意提交；对提交者提供警告、限期禁提交、永久禁提交的分级处罚。
+- 项目发布内置演示 captcha，不接入真实第三方验证；控制台保留 Provider 配置契约。
+- 开发环境邮箱验证码固定为 `123456`；生产环境必须通过配置化 SMTP 发送随机一次性验证码。
+- 统一 `/admin` 下的内容治理、用户访问、站点与品牌、验证、导入导出配置。
+
+## Verification
+
+- public ID 全局唯一，未填写通用名时正确采用第一条账号用户名。
+- 账号冲突、事件与证据写入、默认发布和审计在事务中一致。
+- 文本证据写入受限 UTF-8 txt 文件，文件包 manifest 的 SHA-256 可验证。
+- 导入先预览并拒绝未解决 public ID 冲突，默认不覆盖。
+- 申诉后的修正/撤销不抹去审计；处罚期限和撤销正确生效。
+- 开发仅接受 `123456`，生产无 SMTP 时明确失败。
+- 演示 captcha 不请求第三方端点；配置控制台明确显示其演示性质。
+- 未登录提交入口禁用且有清晰登录引导；admin 控制台可访问全部治理与配置模块。
+
+## Out of Scope
+
+- 真实 Turnstile、reCAPTCHA、hCaptcha 的网络验证适配器。
+- 数据库仅保存对象 ID、其他内容只保存 JSON 文件。
+- 无限制文本证据、无审计物理删除、自动判断恶意。
+- 在无迁移窗口的情况下直接删除历史 Case 表或 API。
+
+---
+
 # Long-term Goals
 
 未来版本计划包括：

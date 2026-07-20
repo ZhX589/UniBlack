@@ -156,3 +156,6 @@ vite.config.ts.timestamp-*
 
 # Local agent skills (per-user, installed via `npx skills add`)
 .agents/
+
+# Compose worktrees
+.worktrees/
