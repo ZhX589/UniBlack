@@ -158,7 +158,7 @@ func (s *AuthService) Register(ctx context.Context, req RegisterRequest, ip stri
 	// Captcha: runtime is always demo when enabled (no third-party network).
 	capCfg := s.loadCaptchaConfig(ctx)
 	if capCfg.Enabled {
-		if err := captcha.NewProvider(capCfg).Verify(ctx, req.CaptchaToken, ip); err != nil {
+		if err := captcha.DefaultDemo().VerifyPurpose(req.CaptchaToken, "register", ip); err != nil {
 			return nil, ErrInvalidCaptcha
 		}
 	}
@@ -335,7 +335,7 @@ func (s *AuthService) VerifyEmail(ctx context.Context, email, code string) error
 
 // VerifySubmissionValidation checks the configured email and demo-captcha
 // requirements before a subject/event record may be published.
-func (s *AuthService) VerifySubmissionValidation(ctx context.Context, email, code, captchaToken string) error {
+func (s *AuthService) VerifySubmissionValidation(ctx context.Context, email, code, captchaToken, userID string) error {
 	var emailVerificationEnabled bool
 	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
 	if emailVerificationEnabled {
@@ -345,7 +345,7 @@ func (s *AuthService) VerifySubmissionValidation(ctx context.Context, email, cod
 	}
 	capCfg := s.loadCaptchaConfig(ctx)
 	if capCfg.Enabled {
-		if err := captcha.NewProvider(capCfg).Verify(ctx, captchaToken, ""); err != nil {
+		if err := captcha.DefaultDemo().VerifyPurpose(captchaToken, "submission", userID); err != nil {
 			return ErrInvalidCaptcha
 		}
 	}

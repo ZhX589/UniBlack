@@ -109,7 +109,6 @@ func (h *PublicAPIHandler) GetSubject(c echo.Context) error {
 		"status":       subject.Status,
 		"identifiers":  subject.Identifiers,
 		"accounts":     subject.Accounts,
-		"events":       subject.Events,
 		"created_at":   subject.CreatedAt,
 	})
 }

@@ -77,15 +77,25 @@ func (s *ArchiveService) Build(ctx context.Context, publicID string) ([]byte, er
 			}
 			if v.StorageKey != nil {
 				item.FileName = *v.StorageKey
-				if rc, err := s.store.Open(ctx, *v.StorageKey); err == nil {
-					b, _ := io.ReadAll(rc)
-					rc.Close()
-					sum := sha256.Sum256(b)
-					if item.SHA256 != "" && item.SHA256 != hex.EncodeToString(sum[:]) {
-						return nil, fmt.Errorf("evidence hash mismatch: %s", *v.StorageKey)
-					}
-					w, _ := zw.Create(*v.StorageKey)
-					_, _ = w.Write(b)
+				rc, err := s.store.Open(ctx, *v.StorageKey)
+				if err != nil {
+					return nil, fmt.Errorf("open evidence %s: %w", *v.StorageKey, err)
+				}
+				b, err := io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					return nil, fmt.Errorf("read evidence %s: %w", *v.StorageKey, err)
+				}
+				sum := sha256.Sum256(b)
+				if item.SHA256 != "" && item.SHA256 != hex.EncodeToString(sum[:]) {
+					return nil, fmt.Errorf("evidence hash mismatch: %s", *v.StorageKey)
+				}
+				w, err := zw.Create(*v.StorageKey)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := w.Write(b); err != nil {
+					return nil, err
 				}
 			}
 			em.Evidence = append(em.Evidence, item)
@@ -100,13 +110,17 @@ func (s *ArchiveService) Build(ctx context.Context, publicID string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	_, _ = w.Write(data)
+	if _, err := w.Write(data); err != nil {
+		return nil, err
+	}
 	readme := "UniBlack 对象归档包\n\nmanifest.json 使用 schema_version 1。evidence/ 中的文件由 manifest 的 SHA-256 校验。文本证据为 UTF-8 txt。导入前必须预览，不能覆盖已存在的 public_id。\n"
 	w, err = zw.Create("README.txt")
 	if err != nil {
 		return nil, err
 	}
-	_, _ = w.Write([]byte(readme))
+	if _, err := w.Write([]byte(readme)); err != nil {
+		return nil, err
+	}
 	if err := zw.Close(); err != nil {
 		return nil, err
 	}
@@ -146,6 +160,36 @@ func (s *ArchiveService) PreviewImport(r io.Reader) (ImportPreview, error) {
 	}
 	if manifest.SchemaVersion != 1 || manifest.PublicID == "" {
 		return ImportPreview{}, fmt.Errorf("unsupported or missing manifest")
+	}
+	files := make(map[string]*zip.File, len(zr.File))
+	for _, f := range zr.File {
+		files[f.Name] = f
+	}
+	for _, event := range manifest.Events {
+		for _, evidence := range event.Evidence {
+			if evidence.FileName == "" {
+				continue
+			}
+			f := files[evidence.FileName]
+			if f == nil {
+				return ImportPreview{}, fmt.Errorf("missing evidence file: %s", evidence.FileName)
+			}
+			rc, err := f.Open()
+			if err != nil {
+				return ImportPreview{}, err
+			}
+			content, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				return ImportPreview{}, err
+			}
+			if evidence.SHA256 != "" {
+				sum := sha256.Sum256(content)
+				if evidence.SHA256 != hex.EncodeToString(sum[:]) {
+					return ImportPreview{}, fmt.Errorf("evidence hash mismatch: %s", evidence.FileName)
+				}
+			}
+		}
 	}
 	preview := ImportPreview{PublicID: manifest.PublicID, Valid: true}
 	if _, err := s.subjects.GetSubjectByID(context.Background(), manifest.PublicID); err == nil {

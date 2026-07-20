@@ -95,7 +95,7 @@ func main() {
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
 	eventService := service.NewEventService(eventRepo, sanctionRepo, userRepo, authService)
-	sanctionService := service.NewSanctionService(sanctionRepo)
+	sanctionService := service.NewSanctionService(sanctionRepo, auditRepo)
 	archiveService := exporter.NewArchiveService(subjectRepo, eventRepo, evidenceRepo, storageBackend)
 
 	// Seed admin user in dev mode
@@ -138,7 +138,7 @@ func main() {
 	authGroup.POST("/refresh", authHandler.RefreshToken)
 	authGroup.POST("/send-verification-code", authHandler.SendVerificationCode)
 	authGroup.POST("/verify-email", authHandler.VerifyEmail)
-	e.POST("/api/verification/demo", verificationHandler.IssueDemoToken)
+	e.POST("/api/verification/demo/register", verificationHandler.IssueRegisterDemoToken)
 
 	// Public settings
 	settingsPublicGroup := e.Group("/api/settings")
@@ -160,6 +160,7 @@ func main() {
 
 	// User routes
 	apiGroup.GET("/profile", authHandler.GetProfile)
+	apiGroup.POST("/verification/demo/submission", verificationHandler.IssueSubmissionDemoToken)
 
 	// Subject routes (authenticated)
 	subjectGroup := apiGroup.Group("/subjects")

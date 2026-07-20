@@ -29,5 +29,19 @@ func (h *EventHandler) Get(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
 	}
+	if e.Status != "published" {
+		userID, _ := c.Get("user_id").(string)
+		roles, _ := c.Get("roles").([]string)
+		privileged := false
+		for _, role := range roles {
+			if role == "admin" || role == "moderator" {
+				privileged = true
+				break
+			}
+		}
+		if !privileged && (e.SubmittedBy == nil || *e.SubmittedBy != userID) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
+		}
+	}
 	return c.JSON(http.StatusOK, e)
 }

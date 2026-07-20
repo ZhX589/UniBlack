@@ -2,11 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
 )
+
+var ErrSanctionNotFound = errors.New("sanction not found or already revoked")
 
 type SanctionRepository struct{ db *gorm.DB }
 
@@ -28,6 +31,13 @@ func (r *SanctionRepository) HasActiveSubmissionRestriction(ctx context.Context,
 
 func (r *SanctionRepository) Revoke(ctx context.Context, id, actorID, reason string) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).Model(&models.Sanction{}).Where("id = ? AND revoked_at IS NULL", id).
-		Updates(map[string]interface{}{"revoked_at": now, "revoked_by": actorID, "revoke_reason": reason}).Error
+	result := r.db.WithContext(ctx).Model(&models.Sanction{}).Where("id = ? AND revoked_at IS NULL", id).
+		Updates(map[string]interface{}{"revoked_at": now, "revoked_by": actorID, "revoke_reason": reason})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrSanctionNotFound
+	}
+	return nil
 }

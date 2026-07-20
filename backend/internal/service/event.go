@@ -18,12 +18,12 @@ type EventService struct {
 	sanctions *repository.SanctionRepository
 	users     *repository.UserRepository
 	verifier  interface {
-		VerifySubmissionValidation(context.Context, string, string, string) error
+		VerifySubmissionValidation(context.Context, string, string, string, string) error
 	}
 }
 
 func NewEventService(events *repository.EventRepository, sanctions *repository.SanctionRepository, users *repository.UserRepository, verifier interface {
-	VerifySubmissionValidation(context.Context, string, string, string) error
+	VerifySubmissionValidation(context.Context, string, string, string, string) error
 }) *EventService {
 	return &EventService{events: events, sanctions: sanctions, users: users, verifier: verifier}
 }
@@ -61,7 +61,7 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		if err != nil {
 			return nil, err
 		}
-		if err := s.verifier.VerifySubmissionValidation(ctx, user.Email, req.VerificationCode, req.CaptchaToken); err != nil {
+		if err := s.verifier.VerifySubmissionValidation(ctx, user.Email, req.VerificationCode, req.CaptchaToken, userID); err != nil {
 			return nil, err
 		}
 	}

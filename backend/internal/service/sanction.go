@@ -9,11 +9,12 @@ import (
 )
 
 type SanctionService struct {
-	repo *repository.SanctionRepository
+	repo  *repository.SanctionRepository
+	audit *repository.AuditLogRepository
 }
 
-func NewSanctionService(repo *repository.SanctionRepository) *SanctionService {
-	return &SanctionService{repo: repo}
+func NewSanctionService(repo *repository.SanctionRepository, audit *repository.AuditLogRepository) *SanctionService {
+	return &SanctionService{repo: repo, audit: audit}
 }
 
 type CreateSanctionRequest struct {
@@ -36,8 +37,23 @@ func (s *SanctionService) Create(ctx context.Context, req CreateSanctionRequest,
 		return nil, errors.New("suspension end required")
 	}
 	v := &models.Sanction{UserID: req.UserID, Type: req.Type, Reason: req.Reason, EndsAt: req.EndsAt, ImposedBy: actor, RelatedEventID: req.RelatedEventID, RelatedAppealID: req.RelatedAppealID, StartsAt: time.Now()}
-	return v, s.repo.Create(ctx, v)
+	if err := s.repo.Create(ctx, v); err != nil {
+		return nil, err
+	}
+	if s.audit != nil {
+		_ = s.audit.CreateAuditLog(ctx, &models.AuditLog{UserID: &actor, Action: "create", ResourceType: "sanction", ResourceID: &v.ID, Changes: map[string]interface{}{"type": v.Type, "user_id": v.UserID, "reason": v.Reason}})
+	}
+	return v, nil
 }
 func (s *SanctionService) Revoke(ctx context.Context, id, actor, reason string) error {
-	return s.repo.Revoke(ctx, id, actor, reason)
+	if reason == "" {
+		return errors.New("revoke reason required")
+	}
+	if err := s.repo.Revoke(ctx, id, actor, reason); err != nil {
+		return err
+	}
+	if s.audit != nil {
+		_ = s.audit.CreateAuditLog(ctx, &models.AuditLog{UserID: &actor, Action: "revoke", ResourceType: "sanction", ResourceID: &id, Changes: map[string]interface{}{"reason": reason}})
+	}
+	return nil
 }

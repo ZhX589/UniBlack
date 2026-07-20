@@ -15,20 +15,26 @@ func NewVerificationHandler(demo *captcha.Demo) *VerificationHandler {
 	return &VerificationHandler{demo: demo}
 }
 
-func (h *VerificationHandler) IssueDemoToken(c echo.Context) error {
-	var req struct {
-		Purpose string `json:"purpose"`
-		Session string `json:"session"`
+func (h *VerificationHandler) issue(c echo.Context, purpose string) error {
+	// The browser cannot choose the binding. Registration uses the request IP;
+	// authenticated flows use the JWT subject, preventing cross-user reuse.
+	session := c.RealIP()
+	if userID, ok := c.Get("user_id").(string); ok && userID != "" {
+		session = userID
 	}
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
-	}
-	if req.Purpose != "register" && req.Purpose != "submission" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid verification purpose"})
-	}
-	token, err := h.demo.Issue(req.Purpose, req.Session)
+	token, err := h.demo.Issue(purpose, session)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unable to issue demo token"})
 	}
 	return c.JSON(http.StatusOK, map[string]string{"token": token})
+}
+
+// IssueRegisterDemoToken is public and binds the token to the requester IP.
+func (h *VerificationHandler) IssueRegisterDemoToken(c echo.Context) error {
+	return h.issue(c, "register")
+}
+
+// IssueSubmissionDemoToken is protected and binds the token to the JWT user ID.
+func (h *VerificationHandler) IssueSubmissionDemoToken(c echo.Context) error {
+	return h.issue(c, "submission")
 }
