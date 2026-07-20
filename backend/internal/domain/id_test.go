@@ -25,7 +25,7 @@ func TestAccountDedupKeyPrefersAccountID(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 	got = AccountDedupKey("Telegram", "Bob", "")
-	if got != "telegram:Bob" {
+	if got != "telegram:bob" {
 		t.Fatalf("got %q", got)
 	}
 }

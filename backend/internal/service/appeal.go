@@ -17,6 +17,7 @@ var (
 type AppealService struct {
 	appealRepo *repository.AppealRepository
 	caseRepo   *repository.CaseRepository
+	eventRepo  *repository.EventRepository
 	auditRepo  *repository.AuditLogRepository
 }
 
@@ -24,11 +25,13 @@ type AppealService struct {
 func NewAppealService(
 	appealRepo *repository.AppealRepository,
 	caseRepo *repository.CaseRepository,
+	eventRepo *repository.EventRepository,
 	auditRepo *repository.AuditLogRepository,
 ) *AppealService {
 	return &AppealService{
 		appealRepo: appealRepo,
 		caseRepo:   caseRepo,
+		eventRepo:  eventRepo,
 		auditRepo:  auditRepo,
 	}
 }
@@ -139,10 +142,21 @@ func (s *AppealService) ResolveAppeal(ctx context.Context, id string, req Resolv
 	if req.Outcome == "corrected" || req.Outcome == "withdrawn" {
 		status = "approved"
 	}
-	if err := s.appealRepo.ReviewAppeal(ctx, id, reviewedBy, status, req.Reason); err != nil {
+	if err := s.appealRepo.ResolveAppeal(ctx, id, reviewedBy, status, req.Outcome, req.Reason); err != nil {
 		return nil, err
 	}
-	if req.Outcome == "withdrawn" {
+	if appeal.EventID != nil && s.eventRepo != nil {
+		switch req.Outcome {
+		case "corrected":
+			if err := s.eventRepo.UpdateStatus(ctx, *appeal.EventID, "corrected", req.Reason); err != nil {
+				return nil, err
+			}
+		case "withdrawn":
+			if err := s.eventRepo.UpdateStatus(ctx, *appeal.EventID, "withdrawn", req.Reason); err != nil {
+				return nil, err
+			}
+		}
+	} else if req.Outcome == "withdrawn" {
 		if err := s.caseRepo.ReviewCase(ctx, appeal.CaseID, reviewedBy, "closed", req.Reason); err != nil {
 			return nil, err
 		}

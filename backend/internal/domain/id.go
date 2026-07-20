@@ -74,9 +74,9 @@ type AccountInput struct {
 func AccountDedupKey(platform, username, accountID string) string {
 	platform = strings.ToLower(strings.TrimSpace(platform))
 	if strings.TrimSpace(accountID) != "" {
-		return platform + ":" + strings.TrimSpace(accountID)
+		return platform + ":" + strings.ToLower(strings.TrimSpace(accountID))
 	}
-	return platform + ":" + strings.TrimSpace(username)
+	return platform + ":" + strings.ToLower(strings.TrimSpace(username))
 }
 
 // ResolveDisplayName picks display name from input or first account username.

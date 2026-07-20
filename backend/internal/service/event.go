@@ -15,6 +15,7 @@ var ErrSubmissionRestricted = errors.New("submission restricted")
 
 type EventService struct {
 	events    *repository.EventRepository
+	subjects  *repository.SubjectRepository
 	sanctions *repository.SanctionRepository
 	users     *repository.UserRepository
 	verifier  interface {
@@ -22,10 +23,10 @@ type EventService struct {
 	}
 }
 
-func NewEventService(events *repository.EventRepository, sanctions *repository.SanctionRepository, users *repository.UserRepository, verifier interface {
+func NewEventService(events *repository.EventRepository, subjects *repository.SubjectRepository, sanctions *repository.SanctionRepository, users *repository.UserRepository, verifier interface {
 	VerifySubmissionValidation(context.Context, string, string, string, string) error
 }) *EventService {
-	return &EventService{events: events, sanctions: sanctions, users: users, verifier: verifier}
+	return &EventService{events: events, subjects: subjects, sanctions: sanctions, users: users, verifier: verifier}
 }
 
 type PublishAccountRequest struct {
@@ -81,6 +82,9 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		if strings.TrimSpace(a.Platform) == "" || (strings.TrimSpace(a.Username) == "" && strings.TrimSpace(a.AccountID) == "") {
 			return nil, errors.New("invalid account")
 		}
+		a.Platform = strings.ToLower(strings.TrimSpace(a.Platform))
+		a.Username = strings.ToLower(strings.TrimSpace(a.Username))
+		a.AccountID = strings.ToLower(strings.TrimSpace(a.AccountID))
 		key := domain.AccountDedupKey(a.Platform, a.Username, a.AccountID)
 		if seen[key] {
 			return nil, errors.New("duplicate account")
@@ -146,4 +150,44 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 
 func (s *EventService) Get(ctx context.Context, id string) (*models.Event, error) {
 	return s.events.GetByID(ctx, id)
+}
+
+// CanManageEvent reports whether a requester may attach evidence to an event.
+func (s *EventService) CanManageEvent(ctx context.Context, eventID, userID string, roles []string) (*models.Event, error) {
+	event, err := s.events.GetByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	for _, role := range roles {
+		if role == "admin" || role == "moderator" {
+			return event, nil
+		}
+	}
+	if event.SubmittedBy != nil && *event.SubmittedBy == userID {
+		return event, nil
+	}
+	return nil, errors.New("event evidence access denied")
+}
+
+func (s *EventService) CanReadEvent(ctx context.Context, eventID, userID string, roles []string) (*models.Event, error) {
+	event, err := s.events.GetByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	if event.Status == "published" || event.Status == "corrected" {
+		return event, nil
+	}
+	return s.CanManageEvent(ctx, eventID, userID, roles)
+}
+
+func (s *EventService) SubjectPublicID(ctx context.Context, eventID string) (string, error) {
+	event, err := s.events.GetByID(ctx, eventID)
+	if err != nil {
+		return "", err
+	}
+	subject, err := s.subjects.GetSubjectByID(ctx, event.SubjectID)
+	if err != nil {
+		return "", err
+	}
+	return subject.PublicID, nil
 }

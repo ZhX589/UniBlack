@@ -95,6 +95,19 @@ func (r *AppealRepository) ReviewAppeal(ctx context.Context, id, reviewedBy, sta
 		Updates(updates).Error
 }
 
+// ResolveAppeal persists the Phase 13 outcome alongside the legacy review state.
+func (r *AppealRepository) ResolveAppeal(ctx context.Context, id, reviewedBy, status, outcome, reason string) error {
+	now := time.Now()
+	result := r.db.WithContext(ctx).Model(&models.Appeal{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"status": status, "outcome": outcome, "resolution_reason": reason,
+		"reviewed_by": reviewedBy, "review_notes": reason, "reviewed_at": now,
+	})
+	if result.RowsAffected == 0 {
+		return ErrAppealNotFound
+	}
+	return result.Error
+}
+
 // DeleteAppeal deletes an appeal
 func (r *AppealRepository) DeleteAppeal(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).

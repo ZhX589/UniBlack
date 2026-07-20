@@ -10,6 +10,11 @@ import (
 // EvidenceHandler handles evidence requests
 type EvidenceHandler struct {
 	evidenceService *service.EvidenceService
+	eventService    *service.EventService
+}
+
+func (h *EvidenceHandler) SetEventService(eventService *service.EventService) {
+	h.eventService = eventService
 }
 
 // NewEvidenceHandler creates a new evidence handler
@@ -78,8 +83,52 @@ func (h *EvidenceHandler) GetEvidence(c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+	if evidence.EventID != nil && h.eventService != nil {
+		userID, _ := c.Get("user_id").(string)
+		roles, _ := c.Get("roles").([]string)
+		if _, err := h.eventService.CanReadEvent(c.Request().Context(), *evidence.EventID, userID, roles); err != nil {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "evidence not found"})
+		}
+	}
 
 	return c.JSON(http.StatusOK, evidence)
+}
+
+// CreateEventTextEvidence attaches bounded text evidence to an Event archive.
+func (h *EvidenceHandler) CreateEventTextEvidence(c echo.Context) error {
+	if h.eventService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "event evidence unavailable"})
+	}
+	var req struct {
+		Text           string `json:"text"`
+		Title          string `json:"title"`
+		EventNumber    int    `json:"event_number"`
+		EvidenceNumber int    `json:"evidence_number"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	eventID := c.Param("id")
+	userID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
+	if _, err := h.eventService.CanManageEvent(c.Request().Context(), eventID, userID, roles); err != nil {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+	}
+	publicID, err := h.eventService.SubjectPublicID(c.Request().Context(), eventID)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
+	}
+	if req.EventNumber < 1 {
+		req.EventNumber = 1
+	}
+	if req.EvidenceNumber < 1 {
+		req.EvidenceNumber = 1
+	}
+	evidence, err := h.evidenceService.CreateEventTextEvidence(c.Request().Context(), eventID, publicID, req.EventNumber, req.EvidenceNumber, req.Text, req.Title, userID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, evidence)
 }
 
 // GetEvidenceByCaseID retrieves all evidence for a case

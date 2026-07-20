@@ -93,8 +93,8 @@ func main() {
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
-	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
-	eventService := service.NewEventService(eventRepo, sanctionRepo, userRepo, authService)
+	appealService := service.NewAppealService(appealRepo, caseRepo, eventRepo, auditRepo)
+	eventService := service.NewEventService(eventRepo, subjectRepo, sanctionRepo, userRepo, authService)
 	sanctionService := service.NewSanctionService(sanctionRepo, auditRepo)
 	archiveService := exporter.NewArchiveService(subjectRepo, eventRepo, evidenceRepo, storageBackend)
 
@@ -110,6 +110,7 @@ func main() {
 	subjectHandler := handler.NewSubjectHandler(subjectService)
 	caseHandler := handler.NewCaseHandler(caseService)
 	evidenceHandler := handler.NewEvidenceHandler(evidenceService)
+	evidenceHandler.SetEventService(eventService)
 	submissionHandler := handler.NewSubmissionHandler(submissionService)
 	appealHandler := handler.NewAppealHandler(appealService)
 	eventHandler := handler.NewEventHandler(eventService)
@@ -214,6 +215,7 @@ func main() {
 	caseGroup.GET("/:id/appeals", appealHandler.GetAppealsByCaseID)
 	eventGroup := apiGroup.Group("/events")
 	eventGroup.GET("/:id", eventHandler.Get)
+	eventGroup.POST("/:id/evidence/text", evidenceHandler.CreateEventTextEvidence)
 
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")

@@ -2,6 +2,8 @@
 
 > 基线：2026-07-20，代码基线 `1719cab`；工作区后续未包含功能实现提交。本文件记录当前真实实现与已确认设计目标之间的差距，不修改未来路线。
 
+> 实施更新：`feature/subject-event-governance` 已实现并验证 `000006`–`000009` 兼容迁移、`UBS_<ULID>`、Account/Event、真实 LocalStorage、受限 UTF-8 文本证据、默认发布、分级处罚、demo captcha、开发固定验证码、归档导出与冲突预览。完整多文件发布事务、确认导入、处罚申诉、完整动态 Shell 与旧 Case API 弃用仍未完成。
+
 ## 阅读规则
 
 - `已实现`：代码存在，并有本地/CI/接口/构建证据。
@@ -23,19 +25,19 @@
 
 | 领域 | 当前状态 | 主要证据 | 结论 |
 | --- | --- | --- | --- |
-| 对象模型 | 部分实现 | `Subject` 存在，但只有 `display_name`、UUID、`Identifiers` | 需要新增公开 ID、账号模型和自定义属性；不能直接把旧 Identifier 当作新 Account |
-| 事件模型 | 未实现 | 核心实体仍是 `models.Case`，表为 `cases` | Phase 13 的 Event 目标尚未进入代码；必须走兼容迁移 |
+| 对象模型 | 部分实现 | `public_id`、`accounts`、兼容读取已实现 | 旧 Identifier 仍在兼容窗口 |
+| 事件模型 | 部分实现 | `events` 表、默认发布与兼容 Case 回填已实现 | 旧 Case API 仍是历史主路径 |
 | 对象通用名规则 | 未实现 | `SubmissionService` 审核时硬编码 `DisplayName: "待补充"` | 不能满足空名自动取第一条账号用户名 |
-| 公开对象 ID | 未实现 | Subject 只有数据库 UUID | 尚无 `UBS_<ULID>`、唯一约束、URL 和导出命名 |
+| 公开对象 ID | 已实现 | `UBS_<ULID>`、唯一索引、归档命名和 public 查询已验证 | 历史对象保留 UUID 兼容回填值 |
 | 账号字段 | 部分实现 | `Identifier` 有 platform/account_type/value/label | 没有 username/account_id/custom_attributes 的独立模型，也没有新规则的去重策略 |
-| 默认发布 | 未实现 | Submission 默认 `pending`，审核通过才创建 Case | 与 Phase 13 默认发布相反；需要新事务入口，旧审核接口要保留迁移窗口 |
+| 默认发布 | 部分实现 | `/api/subjects/publish` 创建 active Subject 和 published Event，已 API smoke | 发布请求尚未携带文件证据；旧 Submission 审核兼容保留 |
 | 事件证据 | 部分实现 | Evidence 表支持 file/link/text；服务使用 `case_id` | 证据仍绑定 Case；文本没有写入 txt；文件 key 使用时间戳；本地上传返回占位 URL |
-| 真实文件存储 | 未实现 | `LocalStorage.Upload` 只返回 URL，不写文件 | 无法生成可验证 JSON 包，也没有可恢复的证据文件 |
-| 导出/导入包 | 未实现 | 无 export 包、manifest、README.txt 或 import preview | 必须在索引和存储完成后开发，不能先写静态导出器 |
-| 申诉结论 | 部分实现 | Appeal 只有 approved/rejected；按 Case 处理 | 没有 upheld/corrected/withdrawn/malicious_submission 语义和事件版本 |
-| 分级处罚 | 未实现 | 没有 sanctions 表、服务或 API | 默认发布前必须先实现有效处罚检查，否则治理闭环不成立 |
-| 人机验证 | 与目标冲突 | `captcha.NewProvider` 会请求三家第三方 siteverify | 当前不是“演示 captcha”；需要替换运行路径，但保留配置契约字段 |
-| 邮箱开发模式 | 与目标冲突 | SMTP host 空时使用 `LogMailer` 并生成/记录随机码 | 目标是 development 固定 `123456`，不能把 LogMailer 作为生产降级 |
+| 真实文件存储 | 部分实现 | LocalStorage 真实写盘，Event 文本 `.txt`、SHA-256、归档 inclusion 已 smoke | 通用 Event 文件上传与 MinIO/S3 adapter 待补 |
+| 导出/导入包 | 部分实现 | ZIP、manifest v1、README、SHA-256 校验、冲突预览已 smoke | 确认导入执行未实现 |
+| 申诉结论 | 部分实现 | outcome/resolution 持久化，Event corrected/withdrawn 更新已实现 | malicious 提交到处罚创建的自动工作流、版本历史待补 |
+| 分级处罚 | 部分实现 | sanctions、有效期、撤销、发布拦截、审计已 API smoke | 处罚申诉和控制台列表待补 |
+| 人机验证 | 部分实现 | 无第三方 URL；demo token 按 purpose/IP 或 JWT 用户绑定且单次使用已 smoke | appeal UI/API 与发送限流待补 |
+| 邮箱开发模式 | 部分实现 | development 固定 `123456`、生产无 SMTP 失败已实现 | submission/appeal 发码入口与频率限制待补 |
 | 邮箱生产模式 | 部分实现 | SMTPMailer 支持 SSL/认证；缺 host 不失败 | 缺 SMTP 必须明确失败，purpose/频率/环境边界未完成 |
 | 配置 OptionMap | 已实现基础 | `setting/options.go`、Bootstrap、schema/settings/values | 可复用配置基础存在；需要补 demo mode、APP_ENV、submission/appeal 文件限制和治理配置 |
 | 统一控制台 | 部分实现 | admin settings/users/access-lists 页面和 admin 路由存在 | 没有治理、处罚、导出、品牌分组和验证状态页面；前端壳层仍旧静态 |
