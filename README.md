@@ -71,7 +71,7 @@ merge main
 ↓  
 Tag
 
-> [!IMPORTANT] 注意：
+> [!IMPORTANT] 
 > 一般情况下不在 `main` 分支下提交代码
 
 ## LICENSE
