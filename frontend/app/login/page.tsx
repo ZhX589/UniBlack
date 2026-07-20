@@ -25,11 +25,27 @@ export default function LoginPage() {
         localStorage.setItem('token', data.access_token)
         localStorage.setItem('refresh_token', data.refresh_token)
         window.location.href = '/'
-      } else {
-        setError('用户名或密码错误')
+        return
       }
-    } catch (error) {
-      setError('登录失败，请稍后重试')
+
+      let message = '登录失败，请稍后重试'
+      try {
+        const data = await res.json()
+        if (res.status === 401) {
+          message = '用户名或密码错误'
+        } else if (data?.error) {
+          message = data.error
+        } else if (res.status === 404 || res.status >= 500) {
+          message = '无法连接后端 API，请确认后端已在 :8080 启动'
+        }
+      } catch {
+        if (res.status === 404 || res.status >= 500) {
+          message = '无法连接后端 API，请确认后端已在 :8080 启动'
+        }
+      }
+      setError(message)
+    } catch {
+      setError('无法连接后端 API，请确认后端已在 :8080 启动')
     } finally {
       setLoading(false)
     }
