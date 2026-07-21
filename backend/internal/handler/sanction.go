@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"net/http"
+	"strconv"
+
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/labstack/echo/v4"
-	"net/http"
 )
 
 type SanctionHandler struct{ service *service.SanctionService }
@@ -33,4 +35,16 @@ func (h *SanctionHandler) Revoke(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "sanction revoked"})
+}
+
+func (h *SanctionHandler) List(c echo.Context) error {
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+	userID := c.QueryParam("user_id")
+	activeOnly := c.QueryParam("active") == "1" || c.QueryParam("active") == "true"
+	rows, total, err := h.service.List(c.Request().Context(), page, pageSize, userID, activeOnly)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"items": rows, "total": total, "page": page, "page_size": pageSize})
 }

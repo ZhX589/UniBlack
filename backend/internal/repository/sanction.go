@@ -41,3 +41,21 @@ func (r *SanctionRepository) Revoke(ctx context.Context, id, actorID, reason str
 	}
 	return nil
 }
+
+func (r *SanctionRepository) List(ctx context.Context, offset, limit int, userID string, activeOnly bool) ([]models.Sanction, int64, error) {
+	var rows []models.Sanction
+	var total int64
+	query := r.db.WithContext(ctx).Model(&models.Sanction{})
+	if userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+	if activeOnly {
+		now := time.Now()
+		query = query.Where("revoked_at IS NULL AND starts_at <= ? AND (ends_at IS NULL OR ends_at > ?)", now, now)
+	}
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	err := query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&rows).Error
+	return rows, total, err
+}

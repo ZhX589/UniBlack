@@ -216,6 +216,7 @@ func main() {
 	eventGroup := apiGroup.Group("/events")
 	eventGroup.GET("/:id", eventHandler.Get)
 	eventGroup.POST("/:id/evidence/text", evidenceHandler.CreateEventTextEvidence)
+	eventGroup.POST("/:id/evidence/file", evidenceHandler.CreateEventFileEvidence)
 
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")
@@ -257,6 +258,7 @@ func main() {
 	adminGroup.GET("/access-lists", settingHandler.ListAccessListEntries)
 	adminGroup.POST("/access-lists", settingHandler.CreateAccessListEntry)
 	adminGroup.DELETE("/access-lists/:id", settingHandler.DeleteAccessListEntry)
+	adminGroup.GET("/sanctions", sanctionHandler.List)
 	adminGroup.POST("/sanctions", sanctionHandler.Create)
 	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
 	adminGroup.GET("/exports/subjects/:publicID", archiveHandler.Export)

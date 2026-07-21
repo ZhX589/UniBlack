@@ -127,6 +127,39 @@ func (s *EvidenceService) CreateEventTextEvidence(ctx context.Context, eventID, 
 	return evidence, nil
 }
 
+// CreateEventFileEvidence stores a binary file under the subject archive namespace.
+func (s *EvidenceService) CreateEventFileEvidence(ctx context.Context, eventID, subjectPublicID string, eventNumber, evidenceNumber int, file io.Reader, fileName string, fileSize int64, title, uploadedBy string) (*models.Evidence, error) {
+	if fileSize <= 0 || fileSize > 20<<20 {
+		return nil, fmt.Errorf("file size out of range")
+	}
+	ext := filepath.Ext(fileName)
+	key := storage.BuildEvidenceKey(subjectPublicID, eventNumber, evidenceNumber, ext)
+	hasher := sha256.New()
+	tee := io.TeeReader(file, hasher)
+	if _, err := s.storage.Upload(ctx, key, tee, getContentType(ext)); err != nil {
+		return nil, fmt.Errorf("store file evidence: %w", err)
+	}
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	mime := getContentType(ext)
+	original := filepath.Base(fileName)
+	evidence := &models.Evidence{
+		EventID:          &eventID,
+		Type:             "file",
+		Title:            &title,
+		StorageKey:       &key,
+		OriginalFilename: &original,
+		FileSize:         &fileSize,
+		SHA256:           &hash,
+		MimeType:         &mime,
+		UploadedBy:       &uploadedBy,
+	}
+	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
+		_ = s.storage.Delete(ctx, key)
+		return nil, err
+	}
+	return evidence, nil
+}
+
 // UploadEvidence uploads a file and creates evidence entry
 func (s *EvidenceService) UploadEvidence(ctx context.Context, req UploadEvidenceRequest, file io.Reader, fileName string, fileSize int64, uploadedBy string) (*models.Evidence, error) {
 	// Verify case exists

@@ -68,10 +68,7 @@ func (r PublishTextEvidenceRequest) Validate(eventCount int) error {
 	if r.EventIndex < 0 || r.EventIndex >= eventCount {
 		return errors.New("invalid evidence event index")
 	}
-	if len(r.Text) == 0 || len(r.Text) > MaxTextEvidenceBytes {
-		return errors.New("invalid text evidence size")
-	}
-	return nil
+	return validateTextEvidence(r.Text)
 }
 
 func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, userID string) (*models.Subject, error) {

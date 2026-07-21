@@ -57,3 +57,13 @@ func (s *SanctionService) Revoke(ctx context.Context, id, actor, reason string) 
 	}
 	return nil
 }
+
+func (s *SanctionService) List(ctx context.Context, page, pageSize int, userID string, activeOnly bool) ([]models.Sanction, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 20
+	}
+	return s.repo.List(ctx, (page-1)*pageSize, pageSize, userID, activeOnly)
+}
