@@ -1,6 +1,6 @@
 # 前端现状与规划差距分析
 
-> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a` 为准，并叠加 `feature/next-development` 已验证前端边界（API client / navigation / tokens / 首页与 Event 链路）。
+> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a` 为准，并叠加 `feature/next-development`（tip `d33fc98`+）：API client、navigation、tokens、页面级 fetch 清零、Event 详情链路、e2e 脚手架。
 
 全栈对象/事件/验证/治理差距见 `docs/implementation-gap-analysis.md`；本文件保留 Phase 12 前端专项进度，不改写 compose 规划正文。
 
@@ -20,7 +20,7 @@
 | 前端 RBAC | 管理入口按角色隐藏；`admin/layout` 403/跳转登录 | 部分实现 | 更细权限与菜单声明式注册表 |
 | 管理信息架构 | 侧栏：审核/用户/名单/处罚/归档/设置 | 部分实现 | 完整数据控制台密度与工具栏规范 |
 | 客户端导航 | 壳层与登录/注册多用 `Link`；部分业务页仍可能有原生跳转 | 部分实现 | 业务页内部统一 `Link`/router |
-| API 访问 | `lib/api.ts` + 401 统一 logout；首页/搜索/登录/详情已迁移 | 部分实现 | typed API client 统一 auth、401、错误 |
+| API 访问 | `lib/api.ts` + 401 统一 logout；公开/管理/提交页已迁移，页面无直连 token | 已实现（unit+build 证据） | typed API client 统一 auth、401、错误 |
 | 类型安全 | `lib/types.ts` 已集中领域类型；管理页仍有 `any` | 部分实现 | 集中领域类型，页面无业务 `any` |
 | UI 组件 | Button/Panel/Badge/Alert/State 最小集已落地 | 部分实现 | 最小 Button/Input/Panel/Badge/Table/State 集 |
 | Tailwind | CSS variables + semantic colors 已映射 | 部分实现 | CSS token + Tailwind semantic colors |
@@ -32,7 +32,7 @@
 | 管理控制台 | 侧栏+处罚/归档页已加；表格密度仍粗 | 部分实现 | 数据控制台 Shell、工具栏和操作反馈 |
 | 可访问性 | 导航有 `aria-current`；未系统验收 | 部分实现 | WCAG AA、键盘流、44px、reduced motion |
 | 老旧设备 | 无正式兼容矩阵 | 未实现 | 主流浏览器最近两版；禁用非必要动效 |
-| 前端测试 | Vitest 单测已通过；Playwright 配置已建但场景未齐 | 部分实现 | Vitest/Testing Library + Playwright |
+| 前端测试 | Vitest 通过；e2e 场景已落地，浏览器实测待跑（系统 Chrome channel） | 部分实现 | Vitest/Testing Library + Playwright |
 | Docker 构建 | Dockerfile 已改 `npm ci`；生产 smoke 待补 | 部分实现 | `npm ci`、明确 build args、镜像 smoke |
 | 文档 | 进度台账已随合并更新 | 部分实现 | 与部署说明持续同步 |
 
