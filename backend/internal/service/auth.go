@@ -29,7 +29,11 @@ var (
 	ErrCaptchaNotReady          = errors.New("captcha enabled but secret not configured")
 	ErrSMTPRequired             = errors.New("smtp not configured")
 	ErrAccessControlUnavailable = errors.New("access control unavailable")
+	ErrVerificationRateLimited  = errors.New("verification code rate limited; try again later")
 )
+
+// verificationCodeMinInterval is the minimum gap between send attempts per email+purpose.
+const verificationCodeMinInterval = 60 * time.Second
 
 func appEnv() string {
 	if v := os.Getenv("GO_ENV"); v != "" {
@@ -52,12 +56,20 @@ type AccessListReader interface {
 	IsListed(ctx context.Context, listType, target, value string) (bool, error)
 }
 
+// VerificationCodeStore persists short-lived email verification codes.
+type VerificationCodeStore interface {
+	Create(ctx context.Context, code *models.VerificationCode) error
+	Consume(ctx context.Context, email, purpose, code string) error
+	InvalidateEmail(ctx context.Context, email, purpose string) error
+	LatestCreatedAt(ctx context.Context, email, purpose string) (time.Time, bool, error)
+}
+
 // AuthService handles authentication logic
 type AuthService struct {
 	userRepo       *repository.UserRepository
 	settings       SettingReader
 	accessListRepo AccessListReader
-	verifyRepo     *repository.VerificationRepository
+	verifyRepo     VerificationCodeStore
 	provider       auth.AuthProvider
 }
 
@@ -69,11 +81,15 @@ func NewAuthService(
 	verifyRepo *repository.VerificationRepository,
 	provider auth.AuthProvider,
 ) *AuthService {
+	var store VerificationCodeStore
+	if verifyRepo != nil {
+		store = verifyRepo
+	}
 	return &AuthService{
 		userRepo:       userRepo,
 		settings:       settings,
 		accessListRepo: accessListRepo,
-		verifyRepo:     verifyRepo,
+		verifyRepo:     store,
 		provider:       provider,
 	}
 }
@@ -273,6 +289,7 @@ func (s *AuthService) SendVerificationCodeForPurpose(ctx context.Context, email,
 	if purpose == "" {
 		purpose = "register"
 	}
+	email = strings.TrimSpace(strings.ToLower(email))
 	var emailVerificationEnabled bool
 	s.opt(ctx, "security.email_verification", &emailVerificationEnabled)
 	if !emailVerificationEnabled {
@@ -282,9 +299,20 @@ func (s *AuthService) SendVerificationCodeForPurpose(ctx context.Context, email,
 		return fmt.Errorf("verification store unavailable")
 	}
 
-	// Development: accept fixed 123456; do not send mail or store random codes.
+	if err := s.enforceVerificationSendRate(ctx, email, purpose); err != nil {
+		return err
+	}
+
+	// Development: accept fixed 123456; still insert a rate-limit marker row (code unused for verify).
 	if isDevelopment() {
-		return nil
+		_ = s.verifyRepo.InvalidateEmail(ctx, email, purpose)
+		row := &models.VerificationCode{
+			Email:     email,
+			Code:      "dev-rate-marker",
+			Purpose:   purpose,
+			ExpiresAt: time.Now().Add(verificationCodeMinInterval),
+		}
+		return s.verifyRepo.Create(ctx, row)
 	}
 
 	var host string
@@ -317,6 +345,23 @@ func (s *AuthService) SendVerificationCodeForPurpose(ctx context.Context, email,
 		Subject: fmt.Sprintf("[%s] 验证码", siteName),
 		Body:    fmt.Sprintf("您的验证码是 %s，10 分钟内有效。\n\n如非本人操作请忽略。", code),
 	})
+}
+
+func (s *AuthService) enforceVerificationSendRate(ctx context.Context, email, purpose string) error {
+	if s.verifyRepo == nil {
+		return nil
+	}
+	last, ok, err := s.verifyRepo.LatestCreatedAt(ctx, email, purpose)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	if time.Since(last) < verificationCodeMinInterval {
+		return ErrVerificationRateLimited
+	}
+	return nil
 }
 
 // VerifyEmailCode validates a code for purpose. Development accepts only 123456.

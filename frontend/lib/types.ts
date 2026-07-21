@@ -63,6 +63,18 @@ export type Sanction = {
   revoked_at?: string | null
 }
 
+export type Appeal = {
+  id: string
+  event_id?: string | null
+  case_id?: string | null
+  reason: string
+  status: string
+  outcome?: string | null
+  resolution_reason?: string | null
+  submitted_by?: string | null
+  created_at?: string
+}
+
 export type AdminUser = {
   id: string
   username: string
