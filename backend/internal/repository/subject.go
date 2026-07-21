@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
@@ -33,10 +34,16 @@ func (r *SubjectRepository) CreateSubject(ctx context.Context, subject *models.S
 // GetSubjectByID retrieves a subject by ID with identifiers
 func (r *SubjectRepository) GetSubjectByID(ctx context.Context, id string) (*models.Subject, error) {
 	var subject models.Subject
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Preload("Identifiers").
-		Where("id = ?", id).
-		First(&subject).Error
+		Preload("Accounts").
+		Preload("Events")
+	if strings.HasPrefix(id, "UBS_") {
+		query = query.Where("public_id = ?", id)
+	} else {
+		query = query.Where("id = ?", id)
+	}
+	err := query.First(&subject).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSubjectNotFound
@@ -44,6 +51,30 @@ func (r *SubjectRepository) GetSubjectByID(ctx context.Context, id string) (*mod
 		return nil, err
 	}
 	return &subject, nil
+}
+
+// AccountConflicts returns normalized account identities that already exist.
+func (r *SubjectRepository) AccountConflicts(ctx context.Context, accounts []models.Account) ([]string, error) {
+	conflicts := make([]string, 0)
+	for _, account := range accounts {
+		platform := strings.ToLower(strings.TrimSpace(account.Platform))
+		var count int64
+		query := r.db.WithContext(ctx).Model(&models.Account{}).Where("lower(btrim(platform)) = ?", platform)
+		if account.AccountID != nil && strings.TrimSpace(*account.AccountID) != "" {
+			query = query.Where("lower(btrim(account_id)) = ?", strings.ToLower(strings.TrimSpace(*account.AccountID)))
+		} else if account.Username != nil && strings.TrimSpace(*account.Username) != "" {
+			query = query.Where("(account_id IS NULL OR btrim(account_id) = '') AND lower(btrim(username)) = ?", strings.ToLower(strings.TrimSpace(*account.Username)))
+		} else {
+			continue
+		}
+		if err := query.Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count > 0 {
+			conflicts = append(conflicts, platform)
+		}
+	}
+	return conflicts, nil
 }
 
 // GetSubjectByIdentifier retrieves a subject by platform and value
@@ -81,6 +112,7 @@ func (r *SubjectRepository) ListSubjects(ctx context.Context, offset, limit int,
 	// Get paginated results
 	err := query.
 		Preload("Identifiers").
+		Preload("Accounts").
 		Offset(offset).
 		Limit(limit).
 		Order("created_at DESC").

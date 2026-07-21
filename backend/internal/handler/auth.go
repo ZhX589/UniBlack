@@ -105,17 +105,32 @@ func (h *AuthHandler) GetProfile(c echo.Context) error {
 	})
 }
 
-// SendVerificationCode sends a verification code to email
+// SendVerificationCode sends a verification code to email.
+// Optional purpose: register (default), submission, appeal.
 func (h *AuthHandler) SendVerificationCode(c echo.Context) error {
 	var req struct {
-		Email string `json:"email" validate:"required,email"`
+		Email   string `json:"email" validate:"required,email"`
+		Purpose string `json:"purpose"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
+	purpose := req.Purpose
+	if purpose == "" {
+		purpose = "register"
+	}
+	if purpose != "register" && purpose != "submission" && purpose != "appeal" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid purpose"})
+	}
+	// Authenticated purposes must not accept arbitrary emails from anonymous callers.
+	if purpose != "register" {
+		if _, ok := c.Get("user_id").(string); !ok {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": "login required"})
+		}
+	}
 
-	if err := h.authService.SendVerificationCode(c.Request().Context(), req.Email); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to send code"})
+	if err := h.authService.SendVerificationCodeForPurpose(c.Request().Context(), req.Email, purpose); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "verification code sent"})

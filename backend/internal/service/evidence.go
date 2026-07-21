@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"path/filepath"
 	"time"
+	"unicode/utf8"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
@@ -18,6 +20,18 @@ import (
 var (
 	ErrEvidenceNotFound = errors.New("evidence not found")
 )
+
+const MaxTextEvidenceBytes = 200 * 1024
+
+func validateTextEvidence(text string) error {
+	if len(text) == 0 || len(text) > MaxTextEvidenceBytes {
+		return fmt.Errorf("text evidence must be between 1 and %d bytes", MaxTextEvidenceBytes)
+	}
+	if !utf8.ValidString(text) {
+		return errors.New("text evidence must be valid UTF-8")
+	}
+	return nil
+}
 
 // EvidenceService handles evidence business logic
 type EvidenceService struct {
@@ -64,7 +78,7 @@ func (s *EvidenceService) CreateEvidence(ctx context.Context, req CreateEvidence
 	}
 
 	evidence := &models.Evidence{
-		CaseID:      req.CaseID,
+		CaseID:      &req.CaseID,
 		Type:        req.Type,
 		Title:       &req.Title,
 		Description: &req.Description,
@@ -76,6 +90,73 @@ func (s *EvidenceService) CreateEvidence(ctx context.Context, req CreateEvidence
 		return nil, err
 	}
 
+	return evidence, nil
+}
+
+// CreateEventTextEvidence stores bounded UTF-8 text as a real archive file.
+// It intentionally does not replace the legacy case-based CreateEvidence API.
+func (s *EvidenceService) CreateEventTextEvidence(ctx context.Context, eventID, subjectPublicID string, eventNumber, evidenceNumber int, text, title, uploadedBy string) (*models.Evidence, error) {
+	if err := validateTextEvidence(text); err != nil {
+		return nil, err
+	}
+	key := storage.BuildEvidenceKey(subjectPublicID, eventNumber, evidenceNumber, ".txt")
+	content := []byte(text)
+	sum := sha256.Sum256(content)
+	if _, err := s.storage.Upload(ctx, key, bytes.NewReader(content), "text/plain; charset=utf-8"); err != nil {
+		return nil, fmt.Errorf("store text evidence: %w", err)
+	}
+	size := int64(len(content))
+	hash := hex.EncodeToString(sum[:])
+	mime := "text/plain"
+	original := filepath.Base(key)
+	evidence := &models.Evidence{
+		EventID:          &eventID,
+		Type:             "text",
+		Title:            &title,
+		StorageKey:       &key,
+		OriginalFilename: &original,
+		FileSize:         &size,
+		SHA256:           &hash,
+		MimeType:         &mime,
+		UploadedBy:       &uploadedBy,
+	}
+	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
+		_ = s.storage.Delete(ctx, key)
+		return nil, err
+	}
+	return evidence, nil
+}
+
+// CreateEventFileEvidence stores a binary file under the subject archive namespace.
+func (s *EvidenceService) CreateEventFileEvidence(ctx context.Context, eventID, subjectPublicID string, eventNumber, evidenceNumber int, file io.Reader, fileName string, fileSize int64, title, uploadedBy string) (*models.Evidence, error) {
+	if fileSize <= 0 || fileSize > 20<<20 {
+		return nil, fmt.Errorf("file size out of range")
+	}
+	ext := filepath.Ext(fileName)
+	key := storage.BuildEvidenceKey(subjectPublicID, eventNumber, evidenceNumber, ext)
+	hasher := sha256.New()
+	tee := io.TeeReader(file, hasher)
+	if _, err := s.storage.Upload(ctx, key, tee, getContentType(ext)); err != nil {
+		return nil, fmt.Errorf("store file evidence: %w", err)
+	}
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	mime := getContentType(ext)
+	original := filepath.Base(fileName)
+	evidence := &models.Evidence{
+		EventID:          &eventID,
+		Type:             "file",
+		Title:            &title,
+		StorageKey:       &key,
+		OriginalFilename: &original,
+		FileSize:         &fileSize,
+		SHA256:           &hash,
+		MimeType:         &mime,
+		UploadedBy:       &uploadedBy,
+	}
+	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
+		_ = s.storage.Delete(ctx, key)
+		return nil, err
+	}
 	return evidence, nil
 }
 
@@ -111,7 +192,7 @@ func (s *EvidenceService) UploadEvidence(ctx context.Context, req UploadEvidence
 
 	// Create evidence entry
 	evidence := &models.Evidence{
-		CaseID:      req.CaseID,
+		CaseID:      &req.CaseID,
 		Type:        "file",
 		Title:       &req.Title,
 		Description: &req.Description,

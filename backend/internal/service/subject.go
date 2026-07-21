@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 )
@@ -50,8 +51,20 @@ type UpdateSubjectRequest struct {
 
 // CreateSubject creates a new subject with identifiers
 func (s *SubjectService) CreateSubject(ctx context.Context, req CreateSubjectRequest, createdBy string) (*models.Subject, error) {
+	publicID, err := domain.GeneratePublicID()
+	if err != nil {
+		return nil, err
+	}
+	displayName := req.DisplayName
+	if displayName == "" && len(req.Identifiers) > 0 {
+		displayName = req.Identifiers[0].Value
+	}
+	if displayName == "" {
+		return nil, errors.New("display_name required")
+	}
 	subject := &models.Subject{
-		DisplayName: req.DisplayName,
+		PublicID:    publicID,
+		DisplayName: displayName,
 		Notes:       &req.Notes,
 		RiskLevel:   req.RiskLevel,
 		Status:      "active",

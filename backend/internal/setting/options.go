@@ -31,6 +31,8 @@ const (
 	KeyCaptchaProvider = "security.captcha_provider"
 	KeyCaptchaSiteKey  = "security.captcha_site_key"
 	KeyCaptchaSecret   = "security.captcha_secret_key"
+	KeyCaptchaMode     = "security.captcha_mode"
+	KeyEvidenceMaxSize = "security.evidence_max_bytes"
 
 	KeyRateLimitPublic = "security.rate_limit_public"
 	KeyRateLimitAuth   = "security.rate_limit_auth"
@@ -76,6 +78,8 @@ var Catalog = []OptionMeta{
 	{Key: KeyCaptchaProvider, Category: "security", Type: "select", Label: "人机验证提供商", Options: []string{"turnstile", "recaptcha", "hcaptcha", "none"}, Public: true},
 	{Key: KeyCaptchaSiteKey, Category: "security", Type: "string", Label: "Captcha Site Key", Public: true},
 	{Key: KeyCaptchaSecret, Category: "security", Type: "secret", Label: "Captcha Secret Key", Secret: true},
+	{Key: KeyCaptchaMode, Category: "security", Type: "select", Label: "人机验证运行模式", Description: "本项目只运行内置演示验证", Options: []string{"demo"}, Public: true},
+	{Key: KeyEvidenceMaxSize, Category: "security", Type: "number", Label: "证据文件上限（字节）"},
 
 	{Key: KeyRateLimitPublic, Category: "security", Type: "number", Label: "公开 API 限速 (req/s)"},
 	{Key: KeyRateLimitAuth, Category: "security", Type: "number", Label: "认证 API 限速 (req/s)"},
@@ -117,6 +121,8 @@ func DefaultMap() map[string]string {
 		KeyCaptchaProvider:   mustJSON(envString("CAPTCHA_PROVIDER", "turnstile")),
 		KeyCaptchaSiteKey:    mustJSON(envString("CAPTCHA_SITE_KEY", "")),
 		KeyCaptchaSecret:     mustJSON(envString("CAPTCHA_SECRET_KEY", "")),
+		KeyCaptchaMode:       mustJSON("demo"),
+		KeyEvidenceMaxSize:   mustJSON(envInt("EVIDENCE_MAX_BYTES", 10*1024*1024)),
 		KeyRateLimitPublic:   mustJSON(envInt("RATE_LIMIT_PUBLIC", 20)),
 		KeyRateLimitAuth:     mustJSON(envInt("RATE_LIMIT_AUTH", 10)),
 		KeyRegisterEnabled:   mustJSON(envBool("REGISTER_ENABLED", true)),

@@ -17,6 +17,7 @@ var (
 type AppealService struct {
 	appealRepo *repository.AppealRepository
 	caseRepo   *repository.CaseRepository
+	eventRepo  *repository.EventRepository
 	auditRepo  *repository.AuditLogRepository
 }
 
@@ -24,11 +25,13 @@ type AppealService struct {
 func NewAppealService(
 	appealRepo *repository.AppealRepository,
 	caseRepo *repository.CaseRepository,
+	eventRepo *repository.EventRepository,
 	auditRepo *repository.AuditLogRepository,
 ) *AppealService {
 	return &AppealService{
 		appealRepo: appealRepo,
 		caseRepo:   caseRepo,
+		eventRepo:  eventRepo,
 		auditRepo:  auditRepo,
 	}
 }
@@ -43,6 +46,11 @@ type CreateAppealRequest struct {
 type ReviewAppealRequest struct {
 	Status      string `json:"status" validate:"required,oneof=approved rejected"`
 	ReviewNotes string `json:"review_notes"`
+}
+
+type ResolveAppealRequest struct {
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason"`
 }
 
 // CreateAppeal creates a new appeal
@@ -119,6 +127,41 @@ func (s *AppealService) ReviewAppeal(ctx context.Context, id string, req ReviewA
 	// Create audit log
 	s.createAuditLog(ctx, reviewedBy, "review", "appeal", appeal.ID, nil)
 
+	return s.appealRepo.GetAppealByID(ctx, id)
+}
+
+func (s *AppealService) ResolveAppeal(ctx context.Context, id string, req ResolveAppealRequest, reviewedBy string) (*models.Appeal, error) {
+	if req.Outcome != "upheld" && req.Outcome != "corrected" && req.Outcome != "withdrawn" && req.Outcome != "malicious_submission" {
+		return nil, errors.New("invalid appeal outcome")
+	}
+	appeal, err := s.appealRepo.GetAppealByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	status := "rejected"
+	if req.Outcome == "corrected" || req.Outcome == "withdrawn" {
+		status = "approved"
+	}
+	if err := s.appealRepo.ResolveAppeal(ctx, id, reviewedBy, status, req.Outcome, req.Reason); err != nil {
+		return nil, err
+	}
+	if appeal.EventID != nil && s.eventRepo != nil {
+		switch req.Outcome {
+		case "corrected":
+			if err := s.eventRepo.UpdateStatus(ctx, *appeal.EventID, "corrected", req.Reason); err != nil {
+				return nil, err
+			}
+		case "withdrawn":
+			if err := s.eventRepo.UpdateStatus(ctx, *appeal.EventID, "withdrawn", req.Reason); err != nil {
+				return nil, err
+			}
+		}
+	} else if req.Outcome == "withdrawn" {
+		if err := s.caseRepo.ReviewCase(ctx, appeal.CaseID, reviewedBy, "closed", req.Reason); err != nil {
+			return nil, err
+		}
+	}
+	s.createAuditLog(ctx, reviewedBy, "resolve", "appeal", id, map[string]interface{}{"outcome": req.Outcome, "reason": req.Reason})
 	return s.appealRepo.GetAppealByID(ctx, id)
 }
 

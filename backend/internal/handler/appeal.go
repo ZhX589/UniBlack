@@ -104,6 +104,19 @@ func (h *AppealHandler) ReviewAppeal(c echo.Context) error {
 	return c.JSON(http.StatusOK, appeal)
 }
 
+func (h *AppealHandler) ResolveAppeal(c echo.Context) error {
+	var req service.ResolveAppealRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	userID, _ := c.Get("user_id").(string)
+	appeal, err := h.appealService.ResolveAppeal(c.Request().Context(), c.Param("id"), req, userID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, appeal)
+}
+
 // DeleteAppeal deletes an appeal
 func (h *AppealHandler) DeleteAppeal(c echo.Context) error {
 	id := c.Param("id")

@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/ZhX589/UniBlack/backend/internal/auth"
+	"github.com/ZhX589/UniBlack/backend/internal/captcha"
 	"github.com/ZhX589/UniBlack/backend/internal/db"
+	exporter "github.com/ZhX589/UniBlack/backend/internal/export"
 	"github.com/ZhX589/UniBlack/backend/internal/handler"
 	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
@@ -65,6 +67,7 @@ func main() {
 
 	// Initialize storage
 	storageBackend := storage.NewLocalStorage("./uploads", "http://localhost:8080/uploads")
+	demoCaptcha := captcha.DefaultDemo()
 
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(database)
@@ -73,6 +76,8 @@ func main() {
 	evidenceRepo := repository.NewEvidenceRepository(database)
 	submissionRepo := repository.NewSubmissionRepository(database)
 	appealRepo := repository.NewAppealRepository(database)
+	eventRepo := repository.NewEventRepository(database, storageBackend)
+	sanctionRepo := repository.NewSanctionRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
 	settingRepo := repository.NewSystemSettingRepository(database)
 	accessListRepo := repository.NewAccessListRepository(database)
@@ -88,7 +93,10 @@ func main() {
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
-	appealService := service.NewAppealService(appealRepo, caseRepo, auditRepo)
+	appealService := service.NewAppealService(appealRepo, caseRepo, eventRepo, auditRepo)
+	eventService := service.NewEventService(eventRepo, subjectRepo, sanctionRepo, userRepo, authService)
+	sanctionService := service.NewSanctionService(sanctionRepo, auditRepo)
+	archiveService := exporter.NewArchiveService(subjectRepo, eventRepo, evidenceRepo, storageBackend)
 
 	// Seed admin user in dev mode
 	if os.Getenv("GO_ENV") != "production" {
@@ -102,11 +110,16 @@ func main() {
 	subjectHandler := handler.NewSubjectHandler(subjectService)
 	caseHandler := handler.NewCaseHandler(caseService)
 	evidenceHandler := handler.NewEvidenceHandler(evidenceService)
+	evidenceHandler.SetEventService(eventService)
 	submissionHandler := handler.NewSubmissionHandler(submissionService)
 	appealHandler := handler.NewAppealHandler(appealService)
+	eventHandler := handler.NewEventHandler(eventService)
+	sanctionHandler := handler.NewSanctionHandler(sanctionService)
+	archiveHandler := handler.NewArchiveHandler(archiveService)
 	settingHandler := handler.NewSystemSettingHandler(settingService)
 	userHandler := handler.NewUserManagementHandler(database)
 	setupHandler := handler.NewSetupHandler(authService, settingService)
+	verificationHandler := handler.NewVerificationHandler(demoCaptcha)
 	publicHandler := handler.NewPublicAPIHandler(subjectService, caseService, evidenceService)
 
 	// Public routes
@@ -126,6 +139,8 @@ func main() {
 	authGroup.POST("/refresh", authHandler.RefreshToken)
 	authGroup.POST("/send-verification-code", authHandler.SendVerificationCode)
 	authGroup.POST("/verify-email", authHandler.VerifyEmail)
+	// Authenticated purpose-scoped codes (submission/appeal) share the same handler.
+	e.POST("/api/verification/demo/register", verificationHandler.IssueRegisterDemoToken)
 
 	// Public settings
 	settingsPublicGroup := e.Group("/api/settings")
@@ -147,10 +162,15 @@ func main() {
 
 	// User routes
 	apiGroup.GET("/profile", authHandler.GetProfile)
+	apiGroup.POST("/verification/demo/submission", verificationHandler.IssueSubmissionDemoToken)
+	apiGroup.POST("/auth/send-verification-code", authHandler.SendVerificationCode)
+	apiGroup.GET("/sanctions/me", sanctionHandler.ListMine)
+	apiGroup.POST("/sanctions/:id/appeal", sanctionHandler.Appeal)
 
 	// Subject routes (authenticated)
 	subjectGroup := apiGroup.Group("/subjects")
 	subjectGroup.POST("", subjectHandler.CreateSubject)
+	subjectGroup.POST("/publish", eventHandler.Publish)
 	subjectGroup.GET("", subjectHandler.ListSubjects)
 	subjectGroup.GET("/:id", subjectHandler.GetSubject)
 	subjectGroup.PUT("/:id", subjectHandler.UpdateSubject)
@@ -197,6 +217,10 @@ func main() {
 
 	// Case appeal routes
 	caseGroup.GET("/:id/appeals", appealHandler.GetAppealsByCaseID)
+	eventGroup := apiGroup.Group("/events")
+	eventGroup.GET("/:id", eventHandler.Get)
+	eventGroup.POST("/:id/evidence/text", evidenceHandler.CreateEventTextEvidence)
+	eventGroup.POST("/:id/evidence/file", evidenceHandler.CreateEventFileEvidence)
 
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")
@@ -210,6 +234,7 @@ func main() {
 	appealReviewGroup := appealGroup.Group("/:id/review")
 	appealReviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
 	appealReviewGroup.POST("", appealHandler.ReviewAppeal)
+	appealReviewGroup.POST("/resolve", appealHandler.ResolveAppeal)
 
 	// Admin routes (require admin role)
 	adminGroup := apiGroup.Group("/admin")
@@ -237,6 +262,13 @@ func main() {
 	adminGroup.GET("/access-lists", settingHandler.ListAccessListEntries)
 	adminGroup.POST("/access-lists", settingHandler.CreateAccessListEntry)
 	adminGroup.DELETE("/access-lists/:id", settingHandler.DeleteAccessListEntry)
+	adminGroup.GET("/sanctions", sanctionHandler.List)
+	adminGroup.POST("/sanctions", sanctionHandler.Create)
+	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
+	adminGroup.POST("/sanction-appeals/:appealID/resolve", sanctionHandler.ResolveAppeal)
+	adminGroup.GET("/exports/subjects/:publicID", archiveHandler.Export)
+	adminGroup.POST("/imports/preview", archiveHandler.PreviewImport)
+	adminGroup.POST("/imports", archiveHandler.Import)
 
 	// Serve static files (uploads)
 	e.Static("/uploads", "./uploads")

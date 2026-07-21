@@ -10,8 +10,8 @@ import (
 
 // PublicAPIHandler handles public API requests
 type PublicAPIHandler struct {
-	subjectService *service.SubjectService
-	caseService    *service.CaseService
+	subjectService  *service.SubjectService
+	caseService     *service.CaseService
 	evidenceService *service.EvidenceService
 }
 
@@ -22,8 +22,8 @@ func NewPublicAPIHandler(
 	evidenceService *service.EvidenceService,
 ) *PublicAPIHandler {
 	return &PublicAPIHandler{
-		subjectService: subjectService,
-		caseService:    caseService,
+		subjectService:  subjectService,
+		caseService:     caseService,
 		evidenceService: evidenceService,
 	}
 }
@@ -45,6 +45,7 @@ func (h *PublicAPIHandler) SearchSubjects(c echo.Context) error {
 	for _, s := range subjects {
 		results = append(results, map[string]interface{}{
 			"id":           s.ID,
+			"public_id":    s.PublicID,
 			"display_name": s.DisplayName,
 			"risk_level":   s.RiskLevel,
 			"case_count":   s.CaseCount,
@@ -78,6 +79,7 @@ func (h *PublicAPIHandler) LookupSubject(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"id":           subject.ID,
+		"public_id":    subject.PublicID,
 		"display_name": subject.DisplayName,
 		"risk_level":   subject.RiskLevel,
 		"case_count":   subject.CaseCount,
@@ -100,11 +102,13 @@ func (h *PublicAPIHandler) GetSubject(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"id":           subject.ID,
+		"public_id":    subject.PublicID,
 		"display_name": subject.DisplayName,
 		"risk_level":   subject.RiskLevel,
 		"case_count":   subject.CaseCount,
 		"status":       subject.Status,
 		"identifiers":  subject.Identifiers,
+		"accounts":     subject.Accounts,
 		"created_at":   subject.CreatedAt,
 	})
 }
@@ -194,6 +198,7 @@ func (h *PublicAPIHandler) ListSubjects(c echo.Context) error {
 	for _, s := range subjects {
 		results = append(results, map[string]interface{}{
 			"id":           s.ID,
+			"public_id":    s.PublicID,
 			"display_name": s.DisplayName,
 			"risk_level":   s.RiskLevel,
 			"case_count":   s.CaseCount,

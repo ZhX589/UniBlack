@@ -159,3 +159,6 @@ vite.config.ts.timestamp-*
 
 # Compose worktrees
 .worktrees/
+
+# Runtime evidence storage
+backend/uploads/
