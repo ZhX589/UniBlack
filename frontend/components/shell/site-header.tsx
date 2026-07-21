@@ -3,9 +3,11 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth, useSite } from '@/app/providers'
+import { isNavActive, visibleNavigation } from '@/lib/navigation'
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  const active = usePathname() === href
+function NavLink({ href, children, exact }: { href: string; children: React.ReactNode; exact?: boolean }) {
+  const pathname = usePathname()
+  const active = isNavActive(pathname, { href, label: '', area: 'public', exact })
   return (
     <Link
       href={href}
@@ -22,6 +24,15 @@ export function SiteHeader() {
   const { name, registrationEnabled } = useSite()
   const router = useRouter()
 
+  const links = visibleNavigation({
+    authenticated: status === 'authenticated',
+    roles: user?.roles || [],
+    registrationEnabled,
+    area: ['public', 'account'],
+  }).filter((item) => item.href !== '/login' && item.href !== '/register')
+
+  const showAdmin = hasRole('admin', 'moderator')
+
   function signOut() {
     logout()
     router.push('/')
@@ -34,15 +45,16 @@ export function SiteHeader() {
           {name}
         </Link>
         <div className="flex flex-wrap items-center gap-4">
-          <NavLink href="/search">查询</NavLink>
-          <NavLink href="/subjects">名单</NavLink>
-          <NavLink href="/submit">提交</NavLink>
-          {hasRole('admin', 'moderator') && <NavLink href="/admin">管理</NavLink>}
+          {links.map((item) => (
+            <NavLink key={item.href} href={item.href} exact={item.exact}>
+              {item.label}
+            </NavLink>
+          ))}
+          {showAdmin && <NavLink href="/admin">管理</NavLink>}
           {status === 'authenticated' ? (
             <>
-              <NavLink href="/sanctions">我的处罚</NavLink>
               <span className="text-sm text-gray-300">{user?.username}</span>
-              <button type="button" onClick={signOut} className="text-gray-300 hover:text-white">
+              <button type="button" onClick={signOut} className="min-h-11 text-gray-300 hover:text-white">
                 退出
               </button>
             </>
