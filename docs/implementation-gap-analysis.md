@@ -1,8 +1,12 @@
 # UniBlack 实现与设计目标差距分析
 
-> 基线：2026-07-20，代码基线 `1719cab`；工作区后续未包含功能实现提交。本文件记录当前真实实现与已确认设计目标之间的差距，不修改未来路线。
+> 进度台账（非规划规格）。记录当前真实实现与已确认设计目标之间的差距；不修改 Phase 12/13 规划目标本身。
 
-> 实施更新（分支 `feature/subject-event-governance` @ 当前 HEAD）：已实现并验证 `000006`–`000010` 迁移、`UBS_<ULID>`、Account/Event、真实 LocalStorage、发布 multipart 多文件+文本同事务、Event 独立文件上传、处罚列表/撤销/一次申诉/管理员裁决、demo captcha、归档导出/预览/确认导入加固、动态 Auth Shell。仍未完成：旧 Case API 弃用窗口、MinIO adapter、完整 Phase 12 design token/Playwright 矩阵。
+> **合并进度（2026-07-21）**：`feature/subject-event-governance` 已合入 `main`（merge `49e4ddc`，功能 tip `c6f6d42`）。合并后在 main 上验证：`go test ./...`、`go build ./cmd/server`、`npx tsc --noEmit`、`npm run build` 通过。
+>
+> **已落地并验证**：迁移 `000006`–`000010`、`UBS_<ULID>`、Account/Event 兼容层、真实 LocalStorage、multipart 多文件+文本同事务发布、Event 独立文件上传、处罚列表/撤销/一次申诉/管理裁决、demo captcha、归档导出/预览/确认导入加固、动态 Auth/Settings Shell 与管理侧栏。
+>
+> **仍未完成**：旧 Case API 弃用窗口、MinIO/S3 adapter、Phase 12 完整 design token / 统一 API client / Playwright 矩阵、链接证据随发布、malicious 自动建处罚。
 
 ## 阅读规则
 

@@ -1,8 +1,8 @@
 # 前端现状与规划差距分析
 
-> 基线：2026-07-20，commit `1719cab`。本文件是滚动差距台账；每次前端阶段完成后更新状态与验证证据。
+> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@49e4ddc`（合入 subject-event-governance）为准。每次前端阶段完成后更新状态与验证证据。
 
-全栈对象/事件/验证/治理差距见 `docs/implementation-gap-analysis.md`；本文件保留 Phase 12 前端专项差距，不替代 Phase 13 领域审计。
+全栈对象/事件/验证/治理差距见 `docs/implementation-gap-analysis.md`；本文件保留 Phase 12 前端专项进度，不改写 compose 规划正文。
 
 ## 状态定义
 
@@ -12,29 +12,29 @@
 
 ## 当前基线
 
-| 领域 | 当前证据 | 状态 | 目标 |
+| 领域 | 当前证据（main@49e4ddc） | 状态 | 目标（规划不变） |
 | --- | --- | --- | --- |
-| 全局导航 | `app/layout.tsx` 固定 5 个 `<a>` | 未实现 | 登录态、角色和功能开关过滤的导航注册表 |
-| 登录态 | 约 14 处 `localStorage` 读写；登录后顶栏不变 | 部分实现 | AuthProvider 统一用户、退出、401 和 return URL |
-| 站点品牌 | metadata、顶栏、首页写死 `UniBlack` | 未实现 | `site.name`、描述、Logo、主题色驱动 Shell |
-| 前端 RBAC | 管理对访客可见；管理页只检查 token | 未实现 | 角色菜单、管理守卫和 403 页面 |
-| 管理信息架构 | settings/users/access-lists 无统一入口 | 未实现 | 管理侧栏覆盖审核、案件、用户、名单、设置 |
-| 客户端导航 | 约 16 个内部 `<a>`，多处硬跳转 | 未实现 | 内部统一 `Link` / Router |
-| API 访问 | 约 23 处页面内 fetch | 未实现 | typed API client 统一 auth、401、错误 |
-| 类型安全 | 列表和设置多处 `any` | 部分实现 | 集中领域类型，页面无业务 `any` |
-| UI 组件 | `components/ui/` 为空 | 未实现 | 最小 Button/Input/Panel/Badge/Table/State 集 |
-| Tailwind | npm + PostCSS 已接入，theme 近乎空白 | 部分实现 | CSS token + Tailwind semantic colors，无 CDN |
-| 响应式 | 少量断点；导航和后台表格窄屏不可用 | 部分实现 | 375/768/1280 验收，菜单和表格降级 |
-| 暗色模式 | body 随系统变暗，面板仍固定白色 | 未实现 | 本阶段移除不完整 dark，后续独立实现 |
-| 页面状态 | loading/empty/error 风格不一 | 部分实现 | idle/loading/empty/error/unauthorized 一致 |
-| 首页动态数据 | 统计均为 `-` | 未实现 | statistics API、降级与主查询入口 |
-| 名单档案 | 基础 table + 详情可访问 | 部分实现 | 档案层级、分页筛选、小屏摘要 |
-| 管理控制台 | 功能页存在，表格表单重复 | 部分实现 | 数据控制台 Shell、工具栏和操作反馈 |
-| 可访问性 | 缺统一 focus、aria-current、错误关联 | 未实现 | WCAG AA、键盘流、44px、reduced motion |
-| 老旧设备 | 无兼容基线和性能预算 | 未实现 | 主流浏览器最近两版；禁用非必要动效 |
-| 前端测试 | 无组件或端到端测试 | 未实现 | Vitest/Testing Library + Playwright |
-| Docker 构建 | `npm install`；无 `.dockerignore`；rewrite env 时机不清 | 部分实现 | `npm ci`、明确 build args、镜像 smoke test |
-| 文档 | roadmap 的响应式/统一语言无验证证据 | 部分实现 | 规范、计划、部署说明和差距台账同步 |
+| 全局导航 | `SiteHeader` + Auth/Settings；登录/角色过滤 | 部分实现 | 完整 navigation registry 与功能开关矩阵 |
+| 登录态 | `Providers` 解析 JWT、退出、清理坏 token；登录后顶栏变化 | 部分实现 | 统一 401 处理、return URL 全覆盖、减少页面级 localStorage |
+| 站点品牌 | 顶栏读 `site.name`；metadata 仍偏静态 | 部分实现 | 描述/Logo/主题色完整驱动 Shell |
+| 前端 RBAC | 管理入口按角色隐藏；`admin/layout` 403/跳转登录 | 部分实现 | 更细权限与菜单声明式注册表 |
+| 管理信息架构 | 侧栏：审核/用户/名单/处罚/归档/设置 | 部分实现 | 完整数据控制台密度与工具栏规范 |
+| 客户端导航 | 壳层与登录/注册多用 `Link`；部分业务页仍可能有原生跳转 | 部分实现 | 业务页内部统一 `Link`/router |
+| API 访问 | 仍多页面直接 fetch | 未实现 | typed API client 统一 auth、401、错误 |
+| 类型安全 | 列表和设置仍有 `any` | 部分实现 | 集中领域类型，页面无业务 `any` |
+| UI 组件 | `components/ui/` 仍空；仅有 shell/auth 组件 | 未实现 | 最小 Button/Input/Panel/Badge/Table/State 集 |
+| Tailwind | npm + PostCSS 构建；theme 仍薄 | 部分实现 | CSS token + Tailwind semantic colors |
+| 响应式 | 管理布局有 grid 降级；未做 375/768/1280 正式验收 | 部分实现 | 三档验收、菜单/表格降级 |
+| 暗色模式 | 仍不完整 | 未实现 | 独立阶段 |
+| 页面状态 | 部分页仍不统一 | 部分实现 | idle/loading/empty/error/unauthorized 一致 |
+| 首页动态数据 | 统计仍可能为占位 | 未实现 | statistics API、降级与主查询入口 |
+| 名单档案 | 列表/详情可用；公开 ID 链路增强中 | 部分实现 | 档案层级、分页筛选、小屏摘要 |
+| 管理控制台 | 侧栏+处罚/归档页已加；表格密度仍粗 | 部分实现 | 数据控制台 Shell、工具栏和操作反馈 |
+| 可访问性 | 导航有 `aria-current`；未系统验收 | 部分实现 | WCAG AA、键盘流、44px、reduced motion |
+| 老旧设备 | 无正式兼容矩阵 | 未实现 | 主流浏览器最近两版；禁用非必要动效 |
+| 前端测试 | 无 Vitest/Playwright | 未实现 | Vitest/Testing Library + Playwright |
+| Docker 构建 | 仍偏 `npm install` | 部分实现 | `npm ci`、明确 build args、镜像 smoke |
+| 文档 | 进度台账已随合并更新 | 部分实现 | 与部署说明持续同步 |
 
 ## 页面差距
 
