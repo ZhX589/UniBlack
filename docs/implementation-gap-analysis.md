@@ -117,7 +117,7 @@
 
 ## 2026-07-21 后续进度（feature/next-development）
 
-**分支 tip**：`81d3615`。工作区：`.worktrees/next-development`。
+**分支 tip**：见 `git log -1`（含 Playwright 实测通过后的提交）。工作区：`.worktrees/next-development`。
 
 ### 已在隔离分支验证并提交
 
@@ -129,13 +129,13 @@
 | Event 治理闭环 | 链接证据随发布、Event-first 申诉、malicious→warning、Account-first 查询、真实 statistics、迁移 `000011`；`DATABASE_URL=... go test ./...` 通过 |
 | 前端共享边界 | `lib/api.ts` / navigation registry / design tokens / 最小 UI；`npm run test:run && typecheck && lint && build` 通过 |
 | 页面级 token/fetch 清零 | `d33fc98`：全站页面不再直连 `localStorage` token / 页面 `fetch`（仅 `providers` 持 token） |
+| Playwright 角色/视口 | `E2E_ALLOW_DEFAULT_USERS=1 npm run test:e2e` → **21 passed**（desktop/tablet/mobile，系统 Chrome channel） |
 
 ### 当前剩余差距
 
 ```text
-Playwright 场景已写脚手架，正式浏览器实测未跑完（优先使用系统 Chrome channel）
-生产 Compose/Nginx 同源 smoke 未跑（Docker daemon 可能不可用）
-旧 Submission 审核 UI 仍处兼容窗口（有意保留，非回归）
+生产 Compose/Nginx 同源 smoke：本机 Docker daemon 不可用（docker info 失败），按收尾计划记为环境阻塞
+旧 Submission 审核 UI 仍处兼容窗口（有意保留至 Sunset，非功能回归）
 ```
 
 ### 计划文档

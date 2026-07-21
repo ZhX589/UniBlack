@@ -162,3 +162,7 @@ vite.config.ts.timestamp-*
 
 # Runtime evidence storage
 backend/uploads/
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/

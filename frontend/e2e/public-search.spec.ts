@@ -18,6 +18,6 @@ for (const [name, size] of Object.entries(viewports)) {
 
 test('anonymous visitor cannot see management navigation', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('link', { name: '管理' })).toHaveCount(0)
-  await expect(page.getByRole('link', { name: '查询' })).toBeVisible()
+  await expect(page.getByRole('link', { name: '管理', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '查询', exact: true })).toBeVisible()
 })

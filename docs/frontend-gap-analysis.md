@@ -32,7 +32,7 @@
 | 管理控制台 | 侧栏+处罚/归档页已加；表格密度仍粗 | 部分实现 | 数据控制台 Shell、工具栏和操作反馈 |
 | 可访问性 | 导航有 `aria-current`；未系统验收 | 部分实现 | WCAG AA、键盘流、44px、reduced motion |
 | 老旧设备 | 无正式兼容矩阵 | 未实现 | 主流浏览器最近两版；禁用非必要动效 |
-| 前端测试 | Vitest 通过；e2e 场景已落地，浏览器实测待跑（系统 Chrome channel） | 部分实现 | Vitest/Testing Library + Playwright |
+| 前端测试 | Vitest 通过；Playwright 21/21 通过（系统 Chrome，375/768/1280 项目） | 已实现（e2e 证据） | Vitest/Testing Library + Playwright |
 | Docker 构建 | Dockerfile 已改 `npm ci`；生产 smoke 待补 | 部分实现 | `npm ci`、明确 build args、镜像 smoke |
 | 文档 | 进度台账已随合并更新 | 部分实现 | 与部署说明持续同步 |
 

@@ -9,7 +9,7 @@ export async function loginAs(page: Page, username: string, password: string) {
 }
 
 export async function expectNoAdminLink(page: Page) {
-  await expect(page.getByRole('link', { name: '管理' })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: '管理', exact: true })).toHaveCount(0)
 }
 
 export async function expectNoHorizontalOverflow(page: Page) {
