@@ -162,12 +162,37 @@ export default function SubmitPage() {
         </section>
         <section id="verification" className="rounded-lg bg-white p-5 shadow">
           <h2 className="font-semibold">4. 验证与发布</h2>
-          <input
-            className="mt-3 w-full rounded border p-2"
-            placeholder="邮箱验证码"
-            value={verificationCode}
-            onChange={(e) => setVerificationCode(e.target.value)}
-          />
+          <div className="mt-3 flex gap-2">
+            <input
+              className="min-w-0 flex-1 rounded border p-2"
+              placeholder="邮箱验证码（开发环境 123456）"
+              value={verificationCode}
+              onChange={(e) => setVerificationCode(e.target.value)}
+            />
+            <button
+              type="button"
+              className="rounded bg-gray-800 px-3 text-white"
+              onClick={async () => {
+                const profile = await fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
+                const data = await profile.json().catch(() => ({}))
+                const email = data.email
+                if (!email) return setError('无法读取当前用户邮箱')
+                const res = await fetch('/api/auth/send-verification-code', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                  body: JSON.stringify({ email, purpose: 'submission' }),
+                })
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({}))
+                  setError(err.error || '发送验证码失败')
+                  return
+                }
+                setError('')
+              }}
+            >
+              发送验证码
+            </button>
+          </div>
           <div className="mt-3">
             <DemoCaptcha value={captchaToken} onChange={setCaptchaToken} purpose="submission" token={token} />
           </div>

@@ -139,6 +139,7 @@ func main() {
 	authGroup.POST("/refresh", authHandler.RefreshToken)
 	authGroup.POST("/send-verification-code", authHandler.SendVerificationCode)
 	authGroup.POST("/verify-email", authHandler.VerifyEmail)
+	// Authenticated purpose-scoped codes (submission/appeal) share the same handler.
 	e.POST("/api/verification/demo/register", verificationHandler.IssueRegisterDemoToken)
 
 	// Public settings
@@ -162,6 +163,7 @@ func main() {
 	// User routes
 	apiGroup.GET("/profile", authHandler.GetProfile)
 	apiGroup.POST("/verification/demo/submission", verificationHandler.IssueSubmissionDemoToken)
+	apiGroup.POST("/auth/send-verification-code", authHandler.SendVerificationCode)
 
 	// Subject routes (authenticated)
 	subjectGroup := apiGroup.Group("/subjects")
