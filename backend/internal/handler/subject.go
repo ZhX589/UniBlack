@@ -82,9 +82,9 @@ func (h *SubjectHandler) ListSubjects(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"subjects": subjects,
-		"total":    total,
-		"page":     page,
+		"subjects":  subjects,
+		"total":     total,
+		"page":      page,
 		"page_size": pageSize,
 	})
 }

@@ -153,16 +153,11 @@ func (s *SubmissionService) DeleteSubmission(ctx context.Context, id, deletedBy 
 
 // createAuditLog creates an audit log entry
 func (s *SubmissionService) createAuditLog(ctx context.Context, userID, action, resourceType, resourceID string, oldValues map[string]interface{}) {
-	changesJSON, _ := json.Marshal(oldValues)
-	changes := make(map[string]interface{})
-	json.Unmarshal(changesJSON, &changes)
-
-	log := &models.AuditLog{
+	_ = s.auditRepo.CreateAuditLog(ctx, &models.AuditLog{
 		UserID:       &userID,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   &resourceID,
-		Changes:      changes,
-	}
-	s.auditRepo.CreateAuditLog(ctx, log)
+		Changes:      oldValues,
+	})
 }

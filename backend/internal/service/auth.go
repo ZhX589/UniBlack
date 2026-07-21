@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -449,10 +448,4 @@ func generateNumericCode(n int) (string, error) {
 		b = append(b, byte('0'+v.Int64()))
 	}
 	return string(b), nil
-}
-
-func generateToken() string {
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
 }

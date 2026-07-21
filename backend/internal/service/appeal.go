@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
@@ -137,10 +136,12 @@ func (s *AppealService) ReviewAppeal(ctx context.Context, id string, req ReviewA
 		return nil, err
 	}
 
-	// If appeal approved, update case status
+	// If appeal approved, update case status (legacy Case path only).
 	if req.Status == "approved" {
 		if appeal.CaseID != nil {
-			s.caseRepo.UpdateCase(ctx, &models.Case{ID: *appeal.CaseID})
+			if err := s.caseRepo.UpdateCase(ctx, &models.Case{ID: *appeal.CaseID}); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -171,16 +172,11 @@ func (s *AppealService) DeleteAppeal(ctx context.Context, id, deletedBy string) 
 
 // createAuditLog creates an audit log entry
 func (s *AppealService) createAuditLog(ctx context.Context, userID, action, resourceType, resourceID string, oldValues map[string]interface{}) {
-	changesJSON, _ := json.Marshal(oldValues)
-	changes := make(map[string]interface{})
-	json.Unmarshal(changesJSON, &changes)
-
-	log := &models.AuditLog{
+	_ = s.auditRepo.CreateAuditLog(ctx, &models.AuditLog{
 		UserID:       &userID,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   &resourceID,
-		Changes:      changes,
-	}
-	s.auditRepo.CreateAuditLog(ctx, log)
+		Changes:      oldValues,
+	})
 }
