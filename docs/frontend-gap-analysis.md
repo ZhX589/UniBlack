@@ -1,6 +1,6 @@
 # 前端现状与规划差距分析
 
-> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@49e4ddc`（合入 subject-event-governance）为准。每次前端阶段完成后更新状态与验证证据。
+> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a`（合入 subject-event-governance 后的进度文档点）为准。每次前端阶段完成后更新状态与验证证据。
 
 全栈对象/事件/验证/治理差距见 `docs/implementation-gap-analysis.md`；本文件保留 Phase 12 前端专项进度，不改写 compose 规划正文。
 
@@ -12,7 +12,7 @@
 
 ## 当前基线
 
-| 领域 | 当前证据（main@49e4ddc） | 状态 | 目标（规划不变） |
+| 领域 | 当前证据（main@b10329a） | 状态 | 目标（规划不变） |
 | --- | --- | --- | --- |
 | 全局导航 | `SiteHeader` + Auth/Settings；登录/角色过滤 | 部分实现 | 完整 navigation registry 与功能开关矩阵 |
 | 登录态 | `Providers` 解析 JWT、退出、清理坏 token；登录后顶栏变化 | 部分实现 | 统一 401 处理、return URL 全覆盖、减少页面级 localStorage |
@@ -38,23 +38,24 @@
 
 ## 页面差距
 
-| 页面 | 当前 | 主要差距 | 目标视觉 |
+| 页面 | 当前（main） | 主要差距 | 目标视觉 |
 | --- | --- | --- | --- |
-| `/` | 静态介绍、占位统计 | 无真实统计、品牌配置、核验交互 | 轻量 SaaS，核验框为焦点 |
-| `/search` | 两表单共用 query | 初始即空态、无详情链接、`any` | 轻量 SaaS，结果可信清晰 |
-| `/subjects` | 固定第一页表格 | 无分页筛选、小屏溢出 | 可信档案列表 |
-| `/subjects/[id]` | 基本资料与案件 | 层级和来源弱 | 对象档案与案件时间线 |
-| `/cases/[id]` | 基本案件详情 | 证据/申诉上下文弱 | 可追溯案件档案 |
-| `/submit` | 基础举报表单 | 页面内鉴权、反馈弱 | 清晰分区表单 |
-| `/login`、`/register` | 功能可用 | 品牌硬编码、链接和错误态不统一 | 简洁认证 Shell |
-| `/setup` | 初始化可用 | 与普通 Shell 混用 | 独立首次启动 Shell |
-| `/admin/*` | 四个孤立页面 | 无统一入口、守卫和响应式 | 数据控制台 |
+| `/` | 静态介绍；统计仍可能占位 | 真实 statistics、品牌配置、核验主交互 | 轻量 SaaS，核验框为焦点 |
+| `/search` | 查询可用 | 空态/loading 统一、类型与详情链接体验 | 轻量 SaaS，结果可信清晰 |
+| `/subjects` | 列表可用 | 分页筛选、小屏摘要、档案密度 | 可信档案列表 |
+| `/subjects/[id]` | 详情可用；public ID 链路增强中 | Event 时间线文案、证据层级 | 对象档案与事件时间线 |
+| `/cases/[id]` | 旧案件详情仍在 | 事件化或兼容跳转；与 Event 模型对齐 | 可追溯事件档案 |
+| `/submit` | 分段对象/账号/事件、文本+多文件 multipart、验证码/demo、未登录灰态 | 统一 API client、状态组件、更少 localStorage | 清晰分区表单 |
+| `/login`、`/register` | Auth 接入、Link、demo captcha | 品牌/错误态与 Auth Shell 完全统一 | 简洁认证 Shell |
+| `/sanctions` | 我的处罚 + 一次申诉 | 管理端申诉队列、更完整反馈 | 治理自助页 |
+| `/setup` | 初始化可用 | 独立首次启动 Shell | 独立 Setup Shell |
+| `/admin/*` | layout 守卫+侧栏；处罚/归档/设置/用户/名单 | 表格密度、工具栏、品牌分组、响应式验收 | 数据控制台 |
 
 ## Roadmap 功能差距
 
 | Roadmap 项 | 判断 | 说明 |
 | --- | --- | --- |
-| Phase 7 申诉页面 | 未实现 | 后端流程存在，前端无独立申诉入口与记录页 |
+| Phase 7 申诉页面 | 部分实现 | 处罚申诉页 `/sanctions` 已有；事件申诉前端入口仍弱 |
 | Phase 8 OpenAPI | 未核验 | README 端点表不等于自动生成 OpenAPI |
 | Phase 8 API Key | 决策冲突 | roadmap 要求 API Key，现有架构决定不实现，需另行决策 |
 | Phase 9 统一设计语言 | 未实现 | 无 token 和组件体系 |
