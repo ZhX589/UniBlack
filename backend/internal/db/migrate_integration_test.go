@@ -78,6 +78,37 @@ func TestRunMigrations(t *testing.T) {
 	assertColumnNullable(t, database, "appeals", "case_id", "YES")
 	assertColumnExists(t, database, "appeals", "deleted_at")
 	assertConstraintExists(t, database, "appeals_target_check")
+
+	caseID := insertReturningID(t, database, "INSERT INTO cases (subject_id, title, status, submitted_by) VALUES (?, 'legacy case', 'approved', ?) RETURNING id", subjectID, userID)
+	dualID := insertReturningID(t, database, "INSERT INTO appeals (case_id, reason, status, submitted_by) VALUES (?, 'dual target', 'pending', ?) RETURNING id", caseID, userID)
+	if err := database.Exec("ALTER TABLE appeals DROP CONSTRAINT appeals_target_check").Error; err != nil {
+		t.Fatalf("remove version-11 constraint: %v", err)
+	}
+	if err := database.Exec("UPDATE appeals SET event_id = ? WHERE id = ?", eventID, dualID).Error; err != nil {
+		t.Fatalf("prepare version-10 dual target: %v", err)
+	}
+	if err := m.Force(10); err != nil {
+		t.Fatalf("set version 10 fixture: %v", err)
+	}
+	if err := m.Steps(1); err != nil {
+		t.Fatalf("migration 11 with dual target: %v", err)
+	}
+	var dualCaseID *string
+	if err := database.Raw("SELECT case_id FROM appeals WHERE id = ?", dualID).Scan(&dualCaseID).Error; err != nil || dualCaseID != nil {
+		t.Fatalf("dual target case_id = %v, %v", dualCaseID, err)
+	}
+
+	if err := database.Exec("DELETE FROM appeals").Error; err != nil {
+		t.Fatalf("clear migration appeals: %v", err)
+	}
+	if err := database.Exec("INSERT INTO submissions (subject_identifiers, reason, status, submitted_by, deleted_at) VALUES ('[]', 'retired', 'pending', ?, NOW())", userID).Error; err != nil {
+		t.Fatalf("prepare retired downgrade fixture: %v", err)
+	}
+	err = m.Steps(-1)
+	if err == nil || !strings.Contains(err.Error(), "cannot downgrade event governance while retired appeals or submissions exist") {
+		t.Fatalf("retired-row downgrade error = %v", err)
+	}
+	assertColumnExists(t, database, "submissions", "deleted_at")
 }
 
 func migrationInstance(t *testing.T, database *gorm.DB, migrationsPath string) *migrate.Migrate {

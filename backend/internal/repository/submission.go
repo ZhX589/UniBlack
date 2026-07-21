@@ -32,7 +32,7 @@ func (r *SubmissionRepository) CreateSubmission(ctx context.Context, submission 
 func (r *SubmissionRepository) GetSubmissionByID(ctx context.Context, id string) (*models.Submission, error) {
 	var submission models.Submission
 	err := r.db.WithContext(ctx).
-		Where("id = ? AND deleted_at IS NULL", id).
+		Where("id = ?", id).
 		First(&submission).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

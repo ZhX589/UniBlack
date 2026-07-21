@@ -3,11 +3,11 @@ package repository
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var (
@@ -208,10 +208,26 @@ func (r *SubjectRepository) SearchSubjects(ctx context.Context, query string) ([
 		Joins("LEFT JOIN identifiers ON identifiers.subject_id = subjects.id").
 		Where("subjects.status = 'active' AND (subjects.display_name ILIKE ? OR accounts.username ILIKE ? OR accounts.account_id ILIKE ? OR identifiers.value ILIKE ?)", pattern, pattern, pattern, pattern).
 		Group("subjects.id").
-		Order(clause.Expr{SQL: "COALESCE(bool_or(accounts.username ILIKE ? OR accounts.account_id ILIKE ?), false) DESC, subjects.created_at DESC", Vars: []interface{}{pattern, pattern}}).
+		Order("subjects.created_at DESC").
 		Limit(50).
 		Find(&subjects).Error
+	if err == nil {
+		needle := strings.ToLower(query)
+		sort.SliceStable(subjects, func(i, j int) bool {
+			return accountMatches(subjects[i].Accounts, needle) && !accountMatches(subjects[j].Accounts, needle)
+		})
+	}
 	return subjects, err
+}
+
+func accountMatches(accounts []models.Account, needle string) bool {
+	for _, account := range accounts {
+		if (account.Username != nil && strings.Contains(strings.ToLower(*account.Username), needle)) ||
+			(account.AccountID != nil && strings.Contains(strings.ToLower(*account.AccountID), needle)) {
+			return true
+		}
+	}
+	return false
 }
 
 // PublicStatistics is intentionally Event-first; legacy CaseCount is not a public metric.

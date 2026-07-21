@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -163,8 +162,9 @@ func TestEventGovernanceIntegration(t *testing.T) {
 		if err := submissionService.DeleteSubmission(ctx, submission.ID, actor.ID); err != nil {
 			t.Fatalf("DeleteSubmission() error = %v", err)
 		}
-		if _, err := submissionService.GetSubmission(ctx, submission.ID); !errors.Is(err, service.ErrSubmissionNotFound) {
-			t.Fatalf("GetSubmission() error = %v", err)
+		retiredSubmission, err := submissionService.GetSubmission(ctx, submission.ID)
+		if err != nil || retiredSubmission.DeletedAt == nil {
+			t.Fatalf("GetSubmission() = %#v, %v", retiredSubmission, err)
 		}
 		rows, total, err := submissionService.ListSubmissions(ctx, 1, 20, "", "")
 		if err != nil || total != 0 || len(rows) != 0 {
@@ -181,15 +181,16 @@ func TestEventGovernanceIntegration(t *testing.T) {
 		if err := appealService.DeleteAppeal(ctx, appeal.ID, actor.ID); err != nil {
 			t.Fatalf("DeleteAppeal() error = %v", err)
 		}
-		if _, err := appealService.GetAppeal(ctx, appeal.ID); !errors.Is(err, service.ErrAppealNotFound) {
-			t.Fatalf("GetAppeal() error = %v", err)
+		retiredAppeal, err := appealService.GetAppeal(ctx, appeal.ID)
+		if err != nil || retiredAppeal.DeletedAt == nil {
+			t.Fatalf("GetAppeal() = %#v, %v", retiredAppeal, err)
 		}
 		appeals, total, err := appealService.ListAppeals(ctx, 1, 20, "", "")
 		if err != nil || total != 0 || len(appeals) != 0 {
 			t.Fatalf("ListAppeals() = %#v, %d, %v", appeals, total, err)
 		}
 		history, err := appealService.GetAppealsByEventID(ctx, event.ID)
-		if err != nil || len(history) != 0 {
+		if err != nil || len(history) != 1 || history[0].ID != appeal.ID || history[0].DeletedAt == nil {
 			t.Fatalf("GetAppealsByEventID() = %#v, %v", history, err)
 		}
 		assertRetiredAndAudited(t, database, auditRepo, "appeals", "appeal", appeal.ID)

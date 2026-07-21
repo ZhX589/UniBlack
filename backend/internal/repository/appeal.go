@@ -33,7 +33,7 @@ func (r *AppealRepository) CreateAppeal(ctx context.Context, appeal *models.Appe
 func (r *AppealRepository) GetAppealByID(ctx context.Context, id string) (*models.Appeal, error) {
 	var appeal models.Appeal
 	err := r.db.WithContext(ctx).
-		Where("id = ? AND deleted_at IS NULL", id).
+		Where("id = ?", id).
 		First(&appeal).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -48,7 +48,7 @@ func (r *AppealRepository) GetAppealByID(ctx context.Context, id string) (*model
 func (r *AppealRepository) GetAppealsByCaseID(ctx context.Context, caseID string) ([]models.Appeal, error) {
 	var appeals []models.Appeal
 	err := r.db.WithContext(ctx).
-		Where("case_id = ? AND deleted_at IS NULL", caseID).
+		Where("case_id = ?", caseID).
 		Order("created_at DESC").
 		Find(&appeals).Error
 	return appeals, err
@@ -56,7 +56,7 @@ func (r *AppealRepository) GetAppealsByCaseID(ctx context.Context, caseID string
 
 func (r *AppealRepository) GetAppealsByEventID(ctx context.Context, eventID string) ([]models.Appeal, error) {
 	var appeals []models.Appeal
-	err := r.db.WithContext(ctx).Where("event_id = ? AND deleted_at IS NULL", eventID).Order("created_at DESC").Find(&appeals).Error
+	err := r.db.WithContext(ctx).Where("event_id = ?", eventID).Order("created_at DESC").Find(&appeals).Error
 	return appeals, err
 }
 
