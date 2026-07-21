@@ -27,9 +27,9 @@
 | --- | --- | --- | --- |
 | 对象模型 | 部分实现 | `public_id`、`accounts`、兼容读取已实现 | 旧 Identifier 仍在兼容窗口 |
 | 事件模型 | 部分实现 | `events` 表、默认发布与兼容 Case 回填已实现 | 旧 Case API 仍是历史主路径 |
-| 对象通用名规则 | 未实现 | `SubmissionService` 审核时硬编码 `DisplayName: "待补充"` | 不能满足空名自动取第一条账号用户名 |
+| 对象通用名规则 | 部分实现 | 新发布路径 `ResolveDisplayName` 已用第一条账号用户名 | 旧 Submission 审核路径仍可能写“待补充” |
 | 公开对象 ID | 已实现 | `UBS_<ULID>`、唯一索引、归档命名和 public 查询已验证 | 历史对象保留 UUID 兼容回填值 |
-| 账号字段 | 部分实现 | `Identifier` 有 platform/account_type/value/label | 没有 username/account_id/custom_attributes 的独立模型，也没有新规则的去重策略 |
+| 账号字段 | 部分实现 | `accounts` 表含 username/account_id/custom_attributes，规范化唯一索引已落地 | 旧 Identifier 兼容读取仍保留 |
 | 默认发布 | 部分实现 | `/api/subjects/publish` 创建 active Subject、published Event 与内嵌文本证据索引，已 API smoke | 发布请求内多文件二进制事务仍待补；旧 Submission 审核兼容保留 |
 | 事件证据 | 部分实现 | Event 文本/文件归档键、SHA-256、可见性检查已 smoke | 旧 Case 证据路径仍兼容；链接证据导入细节待加强 |
 | 真实文件存储 | 部分实现 | LocalStorage 真实写盘；Event 文本/文件与归档 inclusion 已 smoke | MinIO/S3 adapter 待补 |
@@ -37,8 +37,8 @@
 | 申诉结论 | 部分实现 | outcome/resolution 持久化，Event corrected/withdrawn 更新已实现 | malicious 提交到处罚创建的自动工作流、版本历史待补 |
 | 分级处罚 | 部分实现 | sanctions 列表/创建/撤销/发布拦截/审计与管理页已 smoke | 用户自助处罚申诉待补 |
 | 人机验证 | 部分实现 | 无第三方 URL；demo token 按 purpose/IP 或 JWT 用户绑定且单次使用已 smoke | appeal UI/API 与发送限流待补 |
-| 邮箱开发模式 | 部分实现 | development 固定 `123456`、生产无 SMTP 失败已实现 | submission/appeal 发码入口与频率限制待补 |
-| 邮箱生产模式 | 部分实现 | SMTPMailer 支持 SSL/认证；缺 host 失败 | purpose/频率边界待补 |
+| 邮箱开发模式 | 部分实现 | development 固定 `123456`；register/submission 发码入口已实现 | appeal 发码 UI 与频率限制待补 |
+| 邮箱生产模式 | 部分实现 | SMTPMailer 支持 SSL/认证；缺 host 失败；purpose 已区分 | 发送频率限制待补 |
 | 配置 OptionMap | 已实现基础 | `setting/options.go`、Bootstrap、schema/settings/values | 可补 demo mode 文案与证据上限配置 |
 | 统一控制台 | 部分实现 | admin 侧栏含审核/用户/名单/处罚/归档/设置 | 品牌分组与更完整治理 IA 待补 |
 | 前端动态化 | 部分实现 | Auth/Settings Provider、角色导航、管理守卫、Link 顶栏已实现并构建 | 完整 design token、Playwright 矩阵、页面级 API client 统一待补 |
