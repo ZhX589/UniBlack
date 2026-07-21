@@ -5,11 +5,19 @@ import { useState, type FormEvent } from 'react'
 import { DemoCaptcha } from '@/components/auth/demo-captcha'
 
 type Account = { platform: string; username: string; account_id: string }
-type EventInput = { title: string; details: string; severity: number; text_evidence: string }
+type EventInput = {
+  title: string
+  details: string
+  severity: number
+  text_evidence: string
+  files: File[]
+}
 
 export default function SubmitPage() {
   const [accounts, setAccounts] = useState<Account[]>([{ platform: 'qq', username: '', account_id: '' }])
-  const [events, setEvents] = useState<EventInput[]>([{ title: '', details: '', severity: 1, text_evidence: '' }])
+  const [events, setEvents] = useState<EventInput[]>([
+    { title: '', details: '', severity: 1, text_evidence: '', files: [] },
+  ])
   const [displayName, setDisplayName] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
   const [captchaToken, setCaptchaToken] = useState('')
@@ -41,20 +49,54 @@ export default function SubmitPage() {
     setLoading(true)
     try {
       const textEvidence = events
-        .map((event, event_index) => ({ event_index, title: '提交文本证据', text: event.text_evidence.trim() }))
+        .map((event, event_index) => ({
+          event_index,
+          title: '提交文本证据',
+          text: event.text_evidence.trim(),
+        }))
         .filter((item) => item.text.length > 0)
-      const res = await fetch('/api/subjects/publish', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          display_name: displayName,
-          accounts,
-          events: events.map(({ title, details, severity }) => ({ title, details, severity })),
-          text_evidence: textEvidence,
-          verification_code: verificationCode,
-          captcha_token: captchaToken,
-        }),
+
+      const fileEvidenceMeta: Array<{ event_index: number; title: string; filename: string; field: string }> = []
+      const form = new FormData()
+      events.forEach((event, eventIndex) => {
+        event.files.forEach((file, fileIndex) => {
+          const field = `file_${eventIndex}_${fileIndex}`
+          form.append(field, file, file.name)
+          fileEvidenceMeta.push({
+            event_index: eventIndex,
+            title: file.name,
+            filename: file.name,
+            field,
+          })
+        })
       })
+
+      const payload = {
+        display_name: displayName,
+        accounts,
+        events: events.map(({ title, details, severity }) => ({ title, details, severity })),
+        text_evidence: textEvidence,
+        file_evidence: fileEvidenceMeta,
+        verification_code: verificationCode,
+        captcha_token: captchaToken,
+      }
+
+      let res: Response
+      if (fileEvidenceMeta.length > 0) {
+        form.append('payload', JSON.stringify(payload))
+        res = await fetch('/api/subjects/publish', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        })
+      } else {
+        res = await fetch('/api/subjects/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        })
+      }
+
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error || '发布失败')
@@ -83,7 +125,9 @@ export default function SubmitPage() {
   return (
     <main className="mx-auto max-w-3xl py-8">
       <h1 className="text-3xl font-bold">提交对象与事件</h1>
-      <p className="mt-2 text-gray-600">分段填写对象、账号、事件、文本证据与验证信息。开发环境邮箱验证码为 123456。</p>
+      <p className="mt-2 text-gray-600">
+        分段填写对象、账号、事件、文本/文件证据与验证信息。文件与文本会在同一次发布请求中写入归档。开发环境邮箱验证码为 123456。
+      </p>
       {error && <p className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>}
       <form onSubmit={publish} className="mt-6 space-y-6">
         <section id="subject" className="rounded-lg bg-white p-5 shadow">
@@ -127,7 +171,7 @@ export default function SubmitPage() {
           </button>
         </section>
         <section id="events" className="rounded-lg bg-white p-5 shadow">
-          <h2 className="font-semibold">3. 事件与文本证据</h2>
+          <h2 className="font-semibold">3. 事件与证据</h2>
           {events.map((v, i) => (
             <div className="mt-3 space-y-2 border-t pt-3 first:border-t-0 first:pt-0" key={i}>
               <input
@@ -150,12 +194,29 @@ export default function SubmitPage() {
                 value={v.text_evidence}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, text_evidence: e.target.value } : x)))}
               />
+              <input
+                type="file"
+                multiple
+                className="block w-full text-sm"
+                onChange={(e) =>
+                  setEvents(
+                    events.map((x, j) =>
+                      j === i ? { ...x, files: e.target.files ? Array.from(e.target.files) : [] } : x,
+                    ),
+                  )
+                }
+              />
+              {v.files.length > 0 && (
+                <p className="text-xs text-gray-500">已选 {v.files.length} 个文件，将随发布请求一并提交</p>
+              )}
             </div>
           ))}
           <button
             type="button"
             className="mt-3 text-blue-600"
-            onClick={() => setEvents([...events, { title: '', details: '', severity: 1, text_evidence: '' }])}
+            onClick={() =>
+              setEvents([...events, { title: '', details: '', severity: 1, text_evidence: '', files: [] }])
+            }
           >
             添加事件
           </button>

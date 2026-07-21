@@ -59,3 +59,53 @@ func (r *SanctionRepository) List(ctx context.Context, offset, limit int, userID
 	err := query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&rows).Error
 	return rows, total, err
 }
+
+func (r *SanctionRepository) GetByID(ctx context.Context, id string) (*models.Sanction, error) {
+	var row models.Sanction
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSanctionNotFound
+		}
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *SanctionRepository) CreateAppeal(ctx context.Context, appeal *models.SanctionAppeal) error {
+	return r.db.WithContext(ctx).Create(appeal).Error
+}
+
+func (r *SanctionRepository) GetAppealBySanctionID(ctx context.Context, sanctionID string) (*models.SanctionAppeal, error) {
+	var row models.SanctionAppeal
+	err := r.db.WithContext(ctx).Where("sanction_id = ?", sanctionID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &row, err
+}
+
+func (r *SanctionRepository) ResolveAppeal(ctx context.Context, appealID, reviewerID, status, notes string) error {
+	now := time.Now()
+	result := r.db.WithContext(ctx).Model(&models.SanctionAppeal{}).
+		Where("id = ? AND status = ?", appealID, "pending").
+		Updates(map[string]interface{}{
+			"status": status, "reviewed_by": reviewerID, "review_notes": notes, "reviewed_at": now, "updated_at": now,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("sanction appeal not found or already resolved")
+	}
+	return nil
+}
+
+func (r *SanctionRepository) GetAppealByID(ctx context.Context, id string) (*models.SanctionAppeal, error) {
+	var row models.SanctionAppeal
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errors.New("sanction appeal not found")
+	}
+	return &row, err
+}

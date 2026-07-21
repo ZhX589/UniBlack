@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
+
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
-	"time"
 )
 
 type SanctionService struct {
@@ -66,4 +68,69 @@ func (s *SanctionService) List(ctx context.Context, page, pageSize int, userID s
 		pageSize = 20
 	}
 	return s.repo.List(ctx, (page-1)*pageSize, pageSize, userID, activeOnly)
+}
+
+func (s *SanctionService) Appeal(ctx context.Context, sanctionID, userID, reason string) (*models.SanctionAppeal, error) {
+	if strings.TrimSpace(reason) == "" {
+		return nil, errors.New("appeal reason required")
+	}
+	sanction, err := s.repo.GetByID(ctx, sanctionID)
+	if err != nil {
+		return nil, err
+	}
+	if sanction.UserID != userID {
+		return nil, errors.New("can only appeal own sanctions")
+	}
+	if sanction.RevokedAt != nil {
+		return nil, errors.New("sanction already revoked")
+	}
+	existing, err := s.repo.GetAppealBySanctionID(ctx, sanctionID)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return nil, errors.New("sanction already appealed")
+	}
+	appeal := &models.SanctionAppeal{
+		SanctionID:  sanctionID,
+		Reason:      reason,
+		Status:      "pending",
+		SubmittedBy: userID,
+	}
+	if err := s.repo.CreateAppeal(ctx, appeal); err != nil {
+		return nil, err
+	}
+	if s.audit != nil {
+		_ = s.audit.CreateAuditLog(ctx, &models.AuditLog{
+			UserID: &userID, Action: "appeal", ResourceType: "sanction", ResourceID: &sanctionID,
+			Changes: map[string]interface{}{"appeal_id": appeal.ID, "reason": reason},
+		})
+	}
+	return appeal, nil
+}
+
+func (s *SanctionService) ResolveAppeal(ctx context.Context, appealID, actor, status, notes string) (*models.SanctionAppeal, error) {
+	if status != "approved" && status != "rejected" {
+		return nil, errors.New("status must be approved or rejected")
+	}
+	appeal, err := s.repo.GetAppealByID(ctx, appealID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.repo.ResolveAppeal(ctx, appealID, actor, status, notes); err != nil {
+		return nil, err
+	}
+	// Approving a sanction appeal revokes the underlying sanction.
+	if status == "approved" {
+		if err := s.repo.Revoke(ctx, appeal.SanctionID, actor, "sanction appeal approved: "+notes); err != nil && !errors.Is(err, repository.ErrSanctionNotFound) {
+			return nil, err
+		}
+	}
+	if s.audit != nil {
+		_ = s.audit.CreateAuditLog(ctx, &models.AuditLog{
+			UserID: &actor, Action: "resolve_appeal", ResourceType: "sanction_appeal", ResourceID: &appealID,
+			Changes: map[string]interface{}{"status": status, "notes": notes, "sanction_id": appeal.SanctionID},
+		})
+	}
+	return s.repo.GetAppealByID(ctx, appealID)
 }

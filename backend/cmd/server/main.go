@@ -164,6 +164,8 @@ func main() {
 	apiGroup.GET("/profile", authHandler.GetProfile)
 	apiGroup.POST("/verification/demo/submission", verificationHandler.IssueSubmissionDemoToken)
 	apiGroup.POST("/auth/send-verification-code", authHandler.SendVerificationCode)
+	apiGroup.GET("/sanctions/me", sanctionHandler.ListMine)
+	apiGroup.POST("/sanctions/:id/appeal", sanctionHandler.Appeal)
 
 	// Subject routes (authenticated)
 	subjectGroup := apiGroup.Group("/subjects")
@@ -263,6 +265,7 @@ func main() {
 	adminGroup.GET("/sanctions", sanctionHandler.List)
 	adminGroup.POST("/sanctions", sanctionHandler.Create)
 	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
+	adminGroup.POST("/sanction-appeals/:appealID/resolve", sanctionHandler.ResolveAppeal)
 	adminGroup.GET("/exports/subjects/:publicID", archiveHandler.Export)
 	adminGroup.POST("/imports/preview", archiveHandler.PreviewImport)
 	adminGroup.POST("/imports", archiveHandler.Import)

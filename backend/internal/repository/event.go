@@ -82,10 +82,17 @@ func (r *EventRepository) PublishWithEvidence(ctx context.Context, subject *mode
 }
 
 func (r *EventRepository) StoreText(ctx context.Context, key string, body io.Reader) (string, error) {
+	return r.StoreBlob(ctx, key, body, "text/plain; charset=utf-8")
+}
+
+func (r *EventRepository) StoreBlob(ctx context.Context, key string, body io.Reader, contentType string) (string, error) {
 	if r.storage == nil {
 		return "", errors.New("event storage unavailable")
 	}
-	return r.storage.Upload(ctx, key, body, "text/plain; charset=utf-8")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	return r.storage.Upload(ctx, key, body, contentType)
 }
 
 func (r *EventRepository) DeleteStored(ctx context.Context, key string) error {

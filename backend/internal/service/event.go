@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -56,6 +58,7 @@ type PublishSubjectRequest struct {
 	VerificationCode string                       `json:"verification_code"`
 	CaptchaToken     string                       `json:"captcha_token"`
 	TextEvidence     []PublishTextEvidenceRequest `json:"text_evidence"`
+	FileEvidence     []PublishFileEvidenceRequest `json:"file_evidence"`
 }
 
 type PublishTextEvidenceRequest struct {
@@ -64,11 +67,60 @@ type PublishTextEvidenceRequest struct {
 	Text       string `json:"text"`
 }
 
+// PublishFileEvidenceRequest carries binary content for multipart publish.
+// Content is not JSON-serialized from the browser; the handler fills it.
+type PublishFileEvidenceRequest struct {
+	EventIndex int    `json:"event_index"`
+	Title      string `json:"title"`
+	Filename   string `json:"filename"`
+	Content    []byte `json:"-"`
+	Field      string `json:"field,omitempty"`
+}
+
+const MaxPublishFileBytes = 20 << 20
+
+var allowedPublishFileExt = map[string]bool{
+	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
+	".pdf": true, ".txt": true, ".bin": true, ".zip": true, ".webm": true,
+	".mp4": true, ".md": true,
+}
+
 func (r PublishTextEvidenceRequest) Validate(eventCount int) error {
 	if r.EventIndex < 0 || r.EventIndex >= eventCount {
 		return errors.New("invalid evidence event index")
 	}
 	return validateTextEvidence(r.Text)
+}
+
+func (r PublishFileEvidenceRequest) Validate(eventCount int) error {
+	if r.EventIndex < 0 || r.EventIndex >= eventCount {
+		return errors.New("invalid evidence event index")
+	}
+	if len(r.Content) == 0 {
+		return errors.New("file evidence content required")
+	}
+	if len(r.Content) > MaxPublishFileBytes {
+		return fmt.Errorf("file evidence exceeds %d bytes", MaxPublishFileBytes)
+	}
+	ext := strings.ToLower(filepath.Ext(r.Filename))
+	if ext == "" || !allowedPublishFileExt[ext] {
+		return fmt.Errorf("file extension not allowed: %s", ext)
+	}
+	return nil
+}
+
+// nextEvidenceKey assigns per-event T### / F### sequence numbers.
+func nextEvidenceKey(publicID string, eventIndex int, ext string, textN, fileN []int) string {
+	if !strings.HasPrefix(ext, ".") {
+		ext = "." + ext
+	}
+	eventNumber := eventIndex + 1
+	if strings.EqualFold(ext, ".txt") {
+		textN[eventIndex]++
+		return storage.BuildEvidenceKey(publicID, eventNumber, textN[eventIndex], ext)
+	}
+	fileN[eventIndex]++
+	return storage.BuildEvidenceKey(publicID, eventNumber, fileN[eventIndex], ext)
 }
 
 func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, userID string) (*models.Subject, error) {
@@ -157,35 +209,76 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		}
 		events = append(events, models.Event{Title: e.Title, Details: e.Details, Severity: severity, Status: "published", OccurredFrom: e.OccurredFrom, OccurredTo: e.OccurredTo, SubmittedBy: &userID})
 	}
-	// Store text blobs first. Their DB metadata is inserted by the same
-	// transaction as the subject/accounts/events; failed DB writes compensate.
-	evidence := make([]repository.EventEvidence, 0, len(req.TextEvidence))
-	keys := make([]string, 0, len(req.TextEvidence))
-	for number, item := range req.TextEvidence {
+	// Store text/file blobs first. DB metadata is inserted in the same
+	// transaction as subject/accounts/events; failed DB writes compensate storage.
+	evidence := make([]repository.EventEvidence, 0, len(req.TextEvidence)+len(req.FileEvidence))
+	keys := make([]string, 0, len(req.TextEvidence)+len(req.FileEvidence))
+	textN := make([]int, len(events))
+	fileN := make([]int, len(events))
+	cleanup := func() {
+		for _, key := range keys {
+			_ = s.events.DeleteStored(ctx, key)
+		}
+	}
+
+	for _, item := range req.TextEvidence {
 		if err := item.Validate(len(events)); err != nil {
 			return nil, err
 		}
-		key := storage.BuildEvidenceKey(publicID, item.EventIndex+1, number+1, ".txt")
+		key := nextEvidenceKey(publicID, item.EventIndex, ".txt", textN, fileN)
 		body := []byte(item.Text)
 		sum := sha256.Sum256(body)
-		if _, err := s.events.StoreText(ctx, key, bytes.NewReader(body)); err != nil {
+		if _, err := s.events.StoreBlob(ctx, key, bytes.NewReader(body), "text/plain; charset=utf-8"); err != nil {
+			cleanup()
 			return nil, err
 		}
 		keys = append(keys, key)
 		size := int64(len(body))
 		hash := hex.EncodeToString(sum[:])
 		mime := "text/plain"
-		original := key[strings.LastIndex(key, "/")+1:]
+		title := item.Title
+		if title == "" {
+			title = "text evidence"
+		}
+		original := filepath.Base(key)
 		evidence = append(evidence, repository.EventEvidence{
 			EventIndex: item.EventIndex,
-			Evidence:   models.Evidence{Type: "text", Title: &item.Title, StorageKey: &key, OriginalFilename: &original, FileSize: &size, SHA256: &hash, MimeType: &mime, UploadedBy: &userID},
+			Evidence:   models.Evidence{Type: "text", Title: &title, StorageKey: &key, OriginalFilename: &original, FileSize: &size, SHA256: &hash, MimeType: &mime, UploadedBy: &userID},
 		})
 	}
-	audit := &models.AuditLog{UserID: &userID, Action: "publish", ResourceType: "subject", Changes: map[string]interface{}{"public_id": publicID, "event_count": len(events)}}
-	if err := s.events.PublishWithEvidence(ctx, subject, accounts, events, evidence, audit); err != nil {
-		for _, key := range keys {
-			_ = s.events.DeleteStored(ctx, key)
+
+	for _, item := range req.FileEvidence {
+		if err := item.Validate(len(events)); err != nil {
+			cleanup()
+			return nil, err
 		}
+		ext := strings.ToLower(filepath.Ext(item.Filename))
+		key := nextEvidenceKey(publicID, item.EventIndex, ext, textN, fileN)
+		sum := sha256.Sum256(item.Content)
+		mime := getContentType(ext)
+		if _, err := s.events.StoreBlob(ctx, key, bytes.NewReader(item.Content), mime); err != nil {
+			cleanup()
+			return nil, err
+		}
+		keys = append(keys, key)
+		size := int64(len(item.Content))
+		hash := hex.EncodeToString(sum[:])
+		title := item.Title
+		if title == "" {
+			title = filepath.Base(item.Filename)
+		}
+		original := filepath.Base(item.Filename)
+		evidence = append(evidence, repository.EventEvidence{
+			EventIndex: item.EventIndex,
+			Evidence:   models.Evidence{Type: "file", Title: &title, StorageKey: &key, OriginalFilename: &original, FileSize: &size, SHA256: &hash, MimeType: &mime, UploadedBy: &userID},
+		})
+	}
+
+	audit := &models.AuditLog{UserID: &userID, Action: "publish", ResourceType: "subject", Changes: map[string]interface{}{
+		"public_id": publicID, "event_count": len(events), "evidence_count": len(evidence),
+	}}
+	if err := s.events.PublishWithEvidence(ctx, subject, accounts, events, evidence, audit); err != nil {
+		cleanup()
 		return nil, err
 	}
 	subject.Accounts = accounts

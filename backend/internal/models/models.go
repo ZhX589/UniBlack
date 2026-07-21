@@ -219,6 +219,22 @@ type Sanction struct {
 
 func (Sanction) TableName() string { return "sanctions" }
 
+// SanctionAppeal is a one-time appeal against a sanction by the sanctioned user.
+type SanctionAppeal struct {
+	ID          string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	SanctionID  string     `gorm:"type:uuid;not null;uniqueIndex" json:"sanction_id"`
+	Reason      string     `gorm:"type:text;not null" json:"reason"`
+	Status      string     `gorm:"type:varchar(20);not null;default:'pending'" json:"status"`
+	SubmittedBy string     `gorm:"type:uuid;not null" json:"submitted_by"`
+	ReviewedBy  *string    `gorm:"type:uuid" json:"reviewed_by,omitempty"`
+	ReviewNotes *string    `gorm:"type:text" json:"review_notes,omitempty"`
+	ReviewedAt  *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+func (SanctionAppeal) TableName() string { return "sanction_appeals" }
+
 // AuditLog represents an audit log entry
 type AuditLog struct {
 	ID           string                 `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
