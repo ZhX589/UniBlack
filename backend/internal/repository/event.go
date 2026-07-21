@@ -5,9 +5,10 @@ import (
 	"errors"
 	"io"
 
+	"gorm.io/gorm"
+
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
-	"gorm.io/gorm"
 )
 
 var ErrEventNotFound = errors.New("event not found")

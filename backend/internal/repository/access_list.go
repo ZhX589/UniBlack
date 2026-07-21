@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
+
+	"github.com/ZhX589/UniBlack/backend/internal/models"
 )
 
 var (

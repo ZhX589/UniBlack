@@ -11,10 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/ZhX589/UniBlack/backend/internal/db"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/setting"
-	"gorm.io/gorm"
 )
 
 func TestSetupRepositoryRollsBackAndCreatesOnlyOneAdmin(t *testing.T) {

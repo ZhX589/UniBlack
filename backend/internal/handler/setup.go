@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
 // SetupHandler handles system setup requests

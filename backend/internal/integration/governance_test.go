@@ -15,13 +15,14 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/ZhX589/UniBlack/backend/internal/db"
 	exporter "github.com/ZhX589/UniBlack/backend/internal/export"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
-	"gorm.io/gorm"
 )
 
 func TestEventGovernanceIntegration(t *testing.T) {

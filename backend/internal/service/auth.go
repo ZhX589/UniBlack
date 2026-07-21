@@ -10,12 +10,13 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/ZhX589/UniBlack/backend/internal/auth"
 	"github.com/ZhX589/UniBlack/backend/internal/captcha"
 	"github.com/ZhX589/UniBlack/backend/internal/mailer"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (

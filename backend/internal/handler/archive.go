@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"net/http"
 
-	exporter "github.com/ZhX589/UniBlack/backend/internal/export"
 	"github.com/labstack/echo/v4"
+
+	exporter "github.com/ZhX589/UniBlack/backend/internal/export"
 )
 
 type ArchiveHandler struct{ service *exporter.ArchiveService }
