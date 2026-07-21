@@ -117,29 +117,26 @@
 
 ## 2026-07-21 后续进度（feature/next-development）
 
-**分支 tip**：见 `git log -1`（含 Playwright 实测通过后的提交）。工作区：`.worktrees/next-development`。
+**分支 tip**：`main` @ merge `90ef0c2` + 生产 smoke 修复提交。开发产物已合入 `main` 并推送 `origin/main`。
 
-### 已在隔离分支验证并提交
+### 已验证并交付
 
 | 区域 | 证据 |
 | --- | --- |
-| Case API 弃用窗口 | 弃用头 + `docs/api/case-event-migration.md`；本地 `go test` |
-| MinIO/S3 + 生产 fail-closed 存储 | `storage/s3.go`、`selectStorage` 测试；生产缺 endpoint 拒绝启动 |
+| Case API 弃用窗口 | 弃用头 + `docs/api/case-event-migration.md`；Sunset 2026-12-31；管理端旧 UI 明确标为兼容窗口 |
+| MinIO/S3 + 生产 fail-closed 存储 | `storage/s3.go`、`selectStorage` 测试；生产 Compose 使用 MinIO 启动成功 |
 | 启动/初始化/访问控制 | 原子 setup、黑白名单、动态限速、迁移 CI |
-| Event 治理闭环 | 链接证据随发布、Event-first 申诉、malicious→warning、Account-first 查询、真实 statistics、迁移 `000011`；`DATABASE_URL=... go test ./...` 通过 |
-| 前端共享边界 | `lib/api.ts` / navigation registry / design tokens / 最小 UI；`npm run test:run && typecheck && lint && build` 通过 |
-| 页面级 token/fetch 清零 | `d33fc98`：全站页面不再直连 `localStorage` token / 页面 `fetch`（仅 `providers` 持 token） |
-| Playwright 角色/视口 | `E2E_ALLOW_DEFAULT_USERS=1 npm run test:e2e` → **21 passed**（desktop/tablet/mobile，系统 Chrome channel） |
+| Event 治理闭环 | 链接证据随发布、Event-first 申诉、malicious→warning、Account-first 查询、真实 statistics、迁移 `000011`；`go test ./...` 通过 |
+| 前端共享边界 | `lib/api.ts` / navigation registry / design tokens / 最小 UI；unit/typecheck/lint/build 通过 |
+| 页面级 token/fetch 清零 | 全站页面不直连 token/`fetch`（仅 `providers` 持 token） |
+| Playwright 角色/视口 | `E2E_ALLOW_DEFAULT_USERS=1 npm run test:e2e` → **21 passed**（系统 Chrome，desktop/tablet/mobile） |
+| 生产 Compose/Nginx smoke | `docker compose -f docker-compose.prod.yml --env-file .env.smoke up --build -d` 后：`/` 200 HTML、`/api/settings/public` 200、`/api/v1/statistics` 200、`/api/setup/initialize` 200、`/api/auth/login` 200+tokens、`/api/admin/settings` 200、`/_next/static/css/*` 200 |
 
-### 当前剩余差距 / 环境阻塞
+### 有意保留（非未完成）
 
 ```text
-生产 Compose/Nginx 同源 smoke：本机用户无 docker.sock 权限
-  证据：docker info → permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
-  用户组：ZhX input wheel（无 docker 组）；需 root 将用户加入 docker 组或 sudo 后重跑
-旧 Submission 审核 UI 仍处兼容窗口（有意保留至 Sunset，非功能回归）
-本地 API smoke（非 Docker）：GET /api/settings/public 200；GET /api/v1/statistics 200；
-  POST /api/auth/login admin/testuser 200 + access_token
+旧 Submission/Case 管理入口：兼容窗口至 2026-12-31 Sunset（见 docs/api/case-event-migration.md）
+  管理页文案标明“兼容”，新内容走 /submit Event 发布
 ```
 
 ### 计划文档
