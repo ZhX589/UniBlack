@@ -1,6 +1,6 @@
 # 前端现状与规划差距分析
 
-> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a`（合入 subject-event-governance 后的进度文档点）为准。每次前端阶段完成后更新状态与验证证据。
+> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a` 为准，并叠加 `feature/next-development` 已验证前端边界（API client / navigation / tokens / 首页与 Event 链路）。
 
 全栈对象/事件/验证/治理差距见 `docs/implementation-gap-analysis.md`；本文件保留 Phase 12 前端专项进度，不改写 compose 规划正文。
 
@@ -20,20 +20,20 @@
 | 前端 RBAC | 管理入口按角色隐藏；`admin/layout` 403/跳转登录 | 部分实现 | 更细权限与菜单声明式注册表 |
 | 管理信息架构 | 侧栏：审核/用户/名单/处罚/归档/设置 | 部分实现 | 完整数据控制台密度与工具栏规范 |
 | 客户端导航 | 壳层与登录/注册多用 `Link`；部分业务页仍可能有原生跳转 | 部分实现 | 业务页内部统一 `Link`/router |
-| API 访问 | 仍多页面直接 fetch | 未实现 | typed API client 统一 auth、401、错误 |
-| 类型安全 | 列表和设置仍有 `any` | 部分实现 | 集中领域类型，页面无业务 `any` |
-| UI 组件 | `components/ui/` 仍空；仅有 shell/auth 组件 | 未实现 | 最小 Button/Input/Panel/Badge/Table/State 集 |
-| Tailwind | npm + PostCSS 构建；theme 仍薄 | 部分实现 | CSS token + Tailwind semantic colors |
+| API 访问 | `lib/api.ts` + 401 统一 logout；首页/搜索/登录/详情已迁移 | 部分实现 | typed API client 统一 auth、401、错误 |
+| 类型安全 | `lib/types.ts` 已集中领域类型；管理页仍有 `any` | 部分实现 | 集中领域类型，页面无业务 `any` |
+| UI 组件 | Button/Panel/Badge/Alert/State 最小集已落地 | 部分实现 | 最小 Button/Input/Panel/Badge/Table/State 集 |
+| Tailwind | CSS variables + semantic colors 已映射 | 部分实现 | CSS token + Tailwind semantic colors |
 | 响应式 | 管理布局有 grid 降级；未做 375/768/1280 正式验收 | 部分实现 | 三档验收、菜单/表格降级 |
 | 暗色模式 | 仍不完整 | 未实现 | 独立阶段 |
 | 页面状态 | 部分页仍不统一 | 部分实现 | idle/loading/empty/error/unauthorized 一致 |
-| 首页动态数据 | 统计仍可能为占位 | 未实现 | statistics API、降级与主查询入口 |
+| 首页动态数据 | 接入 `/api/v1/statistics`；失败不阻断核验 | 部分实现 | statistics API、降级与主查询入口 |
 | 名单档案 | 列表/详情可用；公开 ID 链路增强中 | 部分实现 | 档案层级、分页筛选、小屏摘要 |
 | 管理控制台 | 侧栏+处罚/归档页已加；表格密度仍粗 | 部分实现 | 数据控制台 Shell、工具栏和操作反馈 |
 | 可访问性 | 导航有 `aria-current`；未系统验收 | 部分实现 | WCAG AA、键盘流、44px、reduced motion |
 | 老旧设备 | 无正式兼容矩阵 | 未实现 | 主流浏览器最近两版；禁用非必要动效 |
-| 前端测试 | 无 Vitest/Playwright | 未实现 | Vitest/Testing Library + Playwright |
-| Docker 构建 | 仍偏 `npm install` | 部分实现 | `npm ci`、明确 build args、镜像 smoke |
+| 前端测试 | Vitest 单测已通过；Playwright 配置已建但场景未齐 | 部分实现 | Vitest/Testing Library + Playwright |
+| Docker 构建 | Dockerfile 已改 `npm ci`；生产 smoke 待补 | 部分实现 | `npm ci`、明确 build args、镜像 smoke |
 | 文档 | 进度台账已随合并更新 | 部分实现 | 与部署说明持续同步 |
 
 ## 页面差距

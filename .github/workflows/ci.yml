@@ -67,15 +67,25 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm run build
-
       - name: Run frontend lint
         run: |
           cd frontend
           npm run lint
+
+      - name: Run frontend typecheck
+        run: |
+          cd frontend
+          npm run typecheck
+
+      - name: Run frontend unit tests
+        run: |
+          cd frontend
+          npm run test:run
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
 
   lint:
     runs-on: ubuntu-latest

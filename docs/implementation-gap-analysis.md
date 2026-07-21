@@ -115,13 +115,21 @@
 
 ## 差距结论
 
+## 2026-07-21 后续进度（feature/next-development）
+
+已在隔离分支验证并提交：
+
+- Case API 弃用头 + Event 公开读取 + 迁移文档 `docs/api/case-event-migration.md`
+- MinIO/S3 adapter、生产 fail-closed 存储选择、对象生命周期清理
+- 生产启动/初始化原子性、黑白名单与动态限速、迁移 CI
+- Event 链接证据随发布、Event-first 申诉、恶意投稿自动 warning、Account-first 查询/真实统计、000011 迁移
+- 前端统一 API client、navigation registry、design token/最小 UI、首页核验+统计、Event 详情链路
+
 当前剩余的主要差距：
 
 ```text
-旧 Case API 与旧 Submission 审核仍兼容并存
-  → 需弃用窗口与文档迁移说明
-MinIO/S3 adapter 与生产对象存储切换未做
-Phase 12 完整 design token / 统一 API client / Playwright 矩阵未完成
+管理端/提交页仍有部分页面级 fetch 与 Hook 依赖警告
+Playwright 角色矩阵与 375/768/1280 正式浏览器验收未完成
+生产 Compose/Nginx 同源 smoke 与一键部署全链路仍待补
+旧 Submission 审核 UI 与 Case 文案仍处兼容窗口
 ```
-
-发布多文件事务与处罚申诉主路径已验收。下一步优先：旧 Case 弃用窗口、对象存储后端切换、Phase 12 剩余验收。

@@ -100,6 +100,21 @@ func (h *PublicAPIHandler) GetSubject(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	publicEvents := make([]map[string]interface{}, 0, len(subject.Events))
+	for _, event := range subject.Events {
+		if event.Status != "published" && event.Status != "corrected" {
+			continue
+		}
+		publicEvents = append(publicEvents, map[string]interface{}{
+			"id":         event.ID,
+			"title":      event.Title,
+			"details":    event.Details,
+			"status":     event.Status,
+			"severity":   event.Severity,
+			"created_at": event.CreatedAt,
+		})
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"id":           subject.ID,
 		"public_id":    subject.PublicID,
@@ -108,6 +123,7 @@ func (h *PublicAPIHandler) GetSubject(c echo.Context) error {
 		"status":       subject.Status,
 		"identifiers":  subject.Identifiers,
 		"accounts":     subject.Accounts,
+		"events":       publicEvents,
 		"created_at":   subject.CreatedAt,
 	})
 }
