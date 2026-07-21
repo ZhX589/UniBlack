@@ -1,76 +1,103 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import Link from 'next/link'
-
-type Sanction = {
-  id: string
-  type: string
-  reason: string
-  ends_at?: string
-  revoked_at?: string
-  created_at: string
-}
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/app/providers'
+import { apiRequest } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
+import type { Sanction } from '@/lib/types'
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
+import { LoadingState } from '@/components/ui/loading-state'
+import { Panel } from '@/components/ui/panel'
 
 export default function MySanctionsPage() {
+  const { status } = useAuth()
+  const router = useRouter()
   const [items, setItems] = useState<Sanction[]>([])
   const [message, setMessage] = useState('')
-  const token = typeof window === 'undefined' ? '' : localStorage.getItem('token') || ''
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
-  async function load() {
-    if (!token) {
-      window.location.href = '/login?next=/sanctions'
-      return
+  const load = useCallback(async () => {
+    if (status !== 'authenticated') return
+    setLoading(true)
+    setError('')
+    try {
+      const data = await apiRequest<{ items?: Sanction[] }>('/api/sanctions/me', { auth: true })
+      setItems(data.items || [])
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '加载失败')
+    } finally {
+      setLoading(false)
     }
-    const res = await fetch('/api/sanctions/me', { headers: { Authorization: `Bearer ${token}` } })
-    if (!res.ok) {
-      setMessage('加载失败')
-      return
-    }
-    const data = await res.json()
-    setItems(data.items || [])
-  }
+  }, [status])
 
   useEffect(() => {
-    load()
-  }, [])
+    if (status === 'anonymous') router.replace('/login?next=/sanctions')
+  }, [status, router])
+
+  useEffect(() => {
+    void load()
+  }, [load])
 
   async function appeal(id: string) {
     const reason = window.prompt('请填写处罚申诉理由（每个处罚仅一次）')
     if (!reason) return
-    const res = await fetch(`/api/sanctions/${id}/appeal`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ reason }),
-    })
-    const data = await res.json().catch(() => ({}))
-    setMessage(res.ok ? '申诉已提交' : data.error || '申诉失败')
-    if (res.ok) load()
+    try {
+      await apiRequest(`/api/sanctions/${id}/appeal`, {
+        auth: true,
+        json: { reason },
+      })
+      setMessage('申诉已提交')
+      await load()
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : '申诉失败')
+    }
   }
+
+  if (status === 'loading') return <LoadingState />
+  if (status === 'anonymous') return null
 
   return (
     <main className="mx-auto max-w-3xl py-8">
       <h1 className="text-3xl font-bold">我的处罚</h1>
-      <p className="mt-2 text-gray-600">被处罚用户可对每条处罚提出一次申诉。申诉通过后处罚将被撤销。</p>
-      {message && <p className="mt-4 rounded bg-blue-50 p-3 text-blue-800">{message}</p>}
-      <div className="mt-6 space-y-3">
-        {items.map((item) => (
-          <div key={item.id} className="rounded border bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <strong>{item.type}</strong>
-              <span className="text-sm text-gray-500">{item.revoked_at ? '已撤销' : '生效中'}</span>
-            </div>
-            <p className="mt-2 text-sm">{item.reason}</p>
-            {!item.revoked_at && (
-              <button type="button" className="mt-3 text-sm text-red-700" onClick={() => appeal(item.id)}>
-                提出申诉
-              </button>
-            )}
-          </div>
-        ))}
-        {items.length === 0 && <p className="text-gray-500">暂无处罚记录</p>}
-      </div>
-      <Link href="/" className="mt-6 inline-block text-blue-600">
+      <p className="mt-2 text-muted">被处罚用户可对每条处罚提出一次申诉。申诉通过后处罚将被撤销。</p>
+      {message && (
+        <div className="mt-4">
+          <Alert tone="success">{message}</Alert>
+        </div>
+      )}
+      {error && (
+        <div className="mt-4">
+          <ErrorState message={error} />
+        </div>
+      )}
+      {loading ? (
+        <LoadingState />
+      ) : (
+        <div className="mt-6 space-y-3">
+          {items.map((item) => (
+            <Panel key={item.id}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <strong>{item.type}</strong>
+                <span className="text-sm text-muted">{item.revoked_at ? '已撤销' : '生效中'}</span>
+              </div>
+              <p className="mt-2 text-sm">{item.reason}</p>
+              {!item.revoked_at && (
+                <Button type="button" variant="ghost" className="mt-3" onClick={() => appeal(item.id)}>
+                  提出申诉
+                </Button>
+              )}
+            </Panel>
+          ))}
+          {items.length === 0 && <EmptyState message="暂无处罚记录" />}
+        </div>
+      )}
+      <Link href="/" className="mt-6 inline-block text-primary hover:underline">
         返回首页
       </Link>
     </main>

@@ -58,13 +58,15 @@ function messageFromBody(body: unknown, fallback: string): string {
   return fallback
 }
 
-export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+function buildRequest(path: string, options: ApiRequestOptions = {}) {
   const headers = new Headers(options.headers || {})
   let body = options.body ?? null
 
   if (options.json !== undefined) {
     headers.set('Content-Type', 'application/json')
     body = JSON.stringify(options.json)
+  } else if (typeof FormData !== 'undefined' && body instanceof FormData) {
+    headers.delete('Content-Type')
   }
 
   if (options.auth) {
@@ -73,21 +75,42 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   const url = path.startsWith('/api') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`
-  const res = await fetch(url, {
-    method: options.method || (options.json !== undefined || body ? 'POST' : 'GET'),
-    headers,
-    body,
-    signal: options.signal,
-  })
+  return {
+    url,
+    init: {
+      method: options.method || (options.json !== undefined || body ? 'POST' : 'GET'),
+      headers,
+      body,
+      signal: options.signal,
+    } as RequestInit,
+  }
+}
 
+function notifyUnauthorized(status: number) {
+  if (status === 401 && onUnauthorized && !unauthorizedNotified) {
+    unauthorizedNotified = true
+    onUnauthorized()
+  }
+}
+
+export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const { url, init } = buildRequest(path, options)
+  const res = await fetch(url, init)
   const parsed = await parseBody(res)
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized && !unauthorizedNotified) {
-      unauthorizedNotified = true
-      onUnauthorized()
-    }
+    notifyUnauthorized(res.status)
     throw new ApiError(res.status, messageFromBody(parsed, res.statusText || 'request failed'), parsed)
   }
-
   return parsed as T
+}
+
+export async function apiBlob(path: string, options: ApiRequestOptions = {}): Promise<Blob> {
+  const { url, init } = buildRequest(path, options)
+  const res = await fetch(url, init)
+  if (!res.ok) {
+    notifyUnauthorized(res.status)
+    const parsed = await parseBody(res)
+    throw new ApiError(res.status, messageFromBody(parsed, res.statusText || 'request failed'), parsed)
+  }
+  return res.blob()
 }

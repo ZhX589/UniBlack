@@ -1,43 +1,46 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { adminSettingsToMap, flattenAdminSettings, parseSettingValue } from '@/lib/settings'
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/app/providers'
+import { apiRequest } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
+import { adminSettingsToMap, flattenAdminSettings } from '@/lib/settings'
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { LoadingState } from '@/components/ui/loading-state'
+import { Panel } from '@/components/ui/panel'
+
+type AdminSettingsResponse = {
+  values?: Record<string, unknown>
+  settings?: Array<{ key: string; value: unknown }>
+}
 
 export default function AdminSettingsPage() {
+  const { status } = useAuth()
+  const router = useRouter()
   const [rows, setRows] = useState<Array<{ key: string; value: string }>>([])
   const [map, setMap] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('basic')
   const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetchSettings()
-  }, [])
-
-  const fetchSettings = async () => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      window.location.href = '/login'
-      return
-    }
+  const fetchSettings = useCallback(async () => {
+    if (status !== 'authenticated') return
+    setLoading(true)
+    setError('')
     try {
-      const res = await fetch('/api/admin/settings', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      // Prefer NewAPI-style { schema, settings, values }
+      const data = await apiRequest<AdminSettingsResponse>('/api/admin/settings', { auth: true })
       if (data?.values && typeof data.values === 'object') {
         const values: Record<string, unknown> = {}
-        for (const [k, v] of Object.entries(data.values as Record<string, unknown>)) {
-          if (v && typeof v === 'object' && 'redacted' in (v as object)) {
-            values[k] = ''
-          } else {
-            values[k] = v
-          }
+        for (const [k, v] of Object.entries(data.values)) {
+          if (v && typeof v === 'object' && 'redacted' in (v as object)) values[k] = ''
+          else values[k] = v
         }
         setMap(values)
         const flat = Array.isArray(data.settings)
-          ? data.settings.map((row: any) => ({
+          ? data.settings.map((row) => ({
               key: row.key,
               value: typeof row.value === 'string' ? row.value : JSON.stringify(row.value),
             }))
@@ -48,12 +51,20 @@ export default function AdminSettingsPage() {
         setRows(flat)
         setMap(adminSettingsToMap(flat))
       }
-    } catch (error) {
-      console.error('Failed to fetch settings:', error)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '加载配置失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [status])
+
+  useEffect(() => {
+    if (status === 'anonymous') router.replace('/login?next=/admin/settings')
+  }, [status, router])
+
+  useEffect(() => {
+    void fetchSettings()
+  }, [fetchSettings])
 
   const displayString = (key: string, fallback = '') => {
     const v = map[key]
@@ -68,27 +79,18 @@ export default function AdminSettingsPage() {
   }
 
   const handleSave = async (key: string, value: unknown) => {
-    const token = localStorage.getItem('token')
-    if (!token) return
     setMessage('')
+    setError('')
     try {
-      const res = await fetch('/api/admin/settings', {
+      await apiRequest('/api/admin/settings', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify([{ key, value }]),
+        auth: true,
+        json: [{ key, value }],
       })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        setMessage(body.error || '保存失败')
-        return
-      }
       setMap((prev) => ({ ...prev, [key]: value }))
       setMessage('已保存')
-    } catch {
-      setMessage('保存失败')
+    } catch (err) {
+      setMessage(err instanceof ApiError ? err.message : '保存失败')
     }
   }
 
@@ -98,54 +100,54 @@ export default function AdminSettingsPage() {
     { id: 'auth', label: '登录配置' },
   ]
 
-  if (loading) {
-    return <div className="py-8 text-center">加载中...</div>
-  }
+  if (status === 'loading' || loading) return <LoadingState />
+  if (status === 'anonymous') return null
 
   return (
-    <div className="py-8">
-      <h1 className="text-3xl font-bold mb-6">系统配置</h1>
-      <p className="text-sm text-gray-500 mb-4">
-        邮箱验证 / 人机验证均通过接口与控制台配置，适配可复用部署（不硬编码供应商）。
+    <div className="py-4">
+      <h1 className="mb-2 text-3xl font-bold">系统配置</h1>
+      <p className="mb-4 text-sm text-muted">
+        邮箱验证 / 人机验证均通过接口与控制台配置。运行时当前使用演示 captcha；控制台保留 provider 契约。
       </p>
-      {message && <div className="mb-4 text-sm text-green-700 bg-green-50 p-2 rounded">{message}</div>}
+      {message && (
+        <div className="mb-4">
+          <Alert tone={message === '已保存' ? 'success' : 'danger'}>{message}</Alert>
+        </div>
+      )}
+      {error && (
+        <div className="mb-4">
+          <Alert>{error}</Alert>
+        </div>
+      )}
 
-      <div className="flex gap-4 mb-6 flex-wrap">
+      <div className="mb-6 flex flex-wrap gap-2">
         {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2 rounded-lg ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-          >
+          <Button key={tab.id} variant={activeTab === tab.id ? 'primary' : 'secondary'} onClick={() => setActiveTab(tab.id)}>
             {tab.label}
-          </button>
+          </Button>
         ))}
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6 space-y-4">
+      <Panel className="space-y-4">
         {activeTab === 'basic' && (
           <>
             <h2 className="text-xl font-semibold">基础配置</h2>
-            <Field
-              label="项目名称"
-              defaultValue={displayString('site.name', 'UniBlack')}
-              onBlur={(v) => handleSave('site.name', v)}
-            />
+            <Field label="项目名称" defaultValue={displayString('site.name', 'UniBlack')} onBlur={(v) => handleSave('site.name', v)} />
             <Field
               label="项目描述"
               textarea
               defaultValue={displayString('site.description')}
               onBlur={(v) => handleSave('site.description', v)}
             />
-            <div>
-              <label className="block text-gray-700 mb-2">主题色</label>
+            <label className="block text-sm">
+              主题色
               <input
                 type="color"
-                defaultValue={displayString('site.theme_color', '#3B82F6')}
+                defaultValue={displayString('site.theme_color', '#2563EB')}
                 onChange={(e) => handleSave('site.theme_color', e.target.value)}
-                className="border rounded-lg px-2 py-1"
+                className="mt-1 block rounded border border-border px-2 py-1"
               />
-            </div>
+            </label>
             <Field
               label="联系邮箱"
               defaultValue={displayString('site.contact_email')}
@@ -163,11 +165,7 @@ export default function AdminSettingsPage() {
               checked={displayBool('security.email_verification')}
               onChange={(v) => handleSave('security.email_verification', v)}
             />
-            <Field
-              label="SMTP Host"
-              defaultValue={displayString('security.smtp_host')}
-              onBlur={(v) => handleSave('security.smtp_host', v)}
-            />
+            <Field label="SMTP Host" defaultValue={displayString('security.smtp_host')} onBlur={(v) => handleSave('security.smtp_host', v)} />
             <Field
               label="SMTP Port"
               defaultValue={displayString('security.smtp_port', '587')}
@@ -187,30 +185,26 @@ export default function AdminSettingsPage() {
                 if (v && v !== '••••••••') handleSave('security.smtp_password', v)
               }}
             />
-            <Field
-              label="SMTP From"
-              defaultValue={displayString('security.smtp_from')}
-              onBlur={(v) => handleSave('security.smtp_from', v)}
-            />
+            <Field label="SMTP From" defaultValue={displayString('security.smtp_from')} onBlur={(v) => handleSave('security.smtp_from', v)} />
             <Toggle
               label="人机验证"
-              desc="注册时要求 Turnstile / reCAPTCHA / hCaptcha"
+              desc="演示模式下不会调用第三方；保留 provider 配置契约"
               checked={displayBool('security.captcha_enabled')}
               onChange={(v) => handleSave('security.captcha_enabled', v)}
             />
-            <div>
-              <label className="block text-gray-700 mb-2">人机验证提供商</label>
+            <label className="block text-sm">
+              人机验证提供商
               <select
                 defaultValue={displayString('security.captcha_provider', 'turnstile')}
                 onChange={(e) => handleSave('security.captcha_provider', e.target.value)}
-                className="w-full border rounded-lg px-4 py-2"
+                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               >
                 <option value="turnstile">Cloudflare Turnstile</option>
                 <option value="recaptcha">Google reCAPTCHA</option>
                 <option value="hcaptcha">hCaptcha</option>
                 <option value="none">无</option>
               </select>
-            </div>
+            </label>
             <Field
               label="Captcha Site Key（公开）"
               defaultValue={displayString('security.captcha_site_key')}
@@ -269,13 +263,11 @@ export default function AdminSettingsPage() {
             />
           </>
         )}
-      </div>
+      </Panel>
 
-      <details className="mt-8 text-sm text-gray-500">
+      <details className="mt-8 text-sm text-muted">
         <summary className="cursor-pointer">原始配置键列表（{rows.length}）</summary>
-        <pre className="mt-2 overflow-auto bg-gray-50 p-3 rounded text-xs">
-          {JSON.stringify(map, null, 2)}
-        </pre>
+        <pre className="mt-2 overflow-auto rounded bg-background p-3 text-xs">{JSON.stringify(map, null, 2)}</pre>
       </details>
     </div>
   )
@@ -297,13 +289,13 @@ function Field({
   placeholder?: string
 }) {
   return (
-    <div>
-      <label className="block text-gray-700 mb-2">{label}</label>
+    <label className="block text-sm">
+      {label}
       {textarea ? (
         <textarea
           defaultValue={defaultValue}
           onBlur={(e) => onBlur(e.target.value)}
-          className="w-full border rounded-lg px-4 py-2 h-24"
+          className="mt-1 h-24 w-full rounded border border-border px-4 py-2"
           placeholder={placeholder}
         />
       ) : (
@@ -311,11 +303,11 @@ function Field({
           type={type}
           defaultValue={defaultValue}
           onBlur={(e) => onBlur(e.target.value)}
-          className="w-full border rounded-lg px-4 py-2"
+          className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
           placeholder={placeholder}
         />
       )}
-    </div>
+    </label>
   )
 }
 
@@ -331,19 +323,14 @@ function Toggle({
   onChange: (v: boolean) => void
 }) {
   return (
-    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+    <div className="flex items-center justify-between rounded bg-background p-4">
       <div>
         <div className="font-medium">{label}</div>
-        <div className="text-sm text-gray-500">{desc}</div>
+        <div className="text-sm text-muted">{desc}</div>
       </div>
-      <label className="relative inline-flex items-center cursor-pointer">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-          className="sr-only peer"
-        />
-        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" />
+      <label className="relative inline-flex min-h-touch cursor-pointer items-center">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
+        <div className="h-6 w-11 rounded-full bg-border after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-primary peer-checked:after:translate-x-full peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2" />
       </label>
     </div>
   )
