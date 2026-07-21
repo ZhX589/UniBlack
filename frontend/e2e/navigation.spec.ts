@@ -19,8 +19,18 @@ test('admin sees management navigation and settings', async ({ page }) => {
   await expect(page.getByRole('link', { name: '管理', exact: true })).toBeVisible()
   await page.goto('/admin')
   await expect(page.getByRole('link', { name: '站点与配置', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: '事件申诉', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '内容治理' })).toBeVisible()
   await expect(page.getByRole('button', { name: '旧举报审核（兼容）' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '事件申诉队列' })).toBeVisible()
+})
+
+test('admin can open event appeal queue', async ({ page }) => {
+  test.skip(!process.env.E2E_ADMIN && !process.env.E2E_ALLOW_DEFAULT_USERS, 'set E2E_ADMIN or E2E_ALLOW_DEFAULT_USERS=1')
+  await loginAs(page, adminUser, adminPassword)
+  await page.goto('/admin/appeals')
+  await expect(page.getByRole('heading', { name: '事件申诉队列' })).toBeVisible()
+  await expect(page.getByText('审核 Event 申诉')).toBeVisible()
 })
 
 test('login and logout update shell without hard redirect artifacts', async ({ page }) => {

@@ -99,16 +99,20 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## API 文档
 
+> **Canonical model is Event-first** (Subject → Account → Event).  
+> Legacy Case routes remain until **2026-12-31** with `Deprecation` / `Sunset` headers — see `docs/api/case-event-migration.md` and `docs/product-decisions.md`.
+
 ### 公开 API（无需认证）
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/v1/search?q=` | GET | 搜索黑名单 |
+| `/api/v1/search?q=` | GET | 搜索黑名单（Account-first） |
 | `/api/v1/lookup?platform=&value=` | GET | 按平台查询 |
-| `/api/v1/subjects` | GET | 列出黑名单 |
-| `/api/v1/subjects/:id` | GET | 获取详情 |
-| `/api/v1/cases/:id` | GET | 获取案件 |
-| `/api/v1/statistics` | GET | 获取统计 |
+| `/api/v1/subjects` | GET | 列出对象 |
+| `/api/v1/subjects/:id` | GET | 对象详情（含公开事件） |
+| `/api/v1/events/:id` | GET | 事件详情（规范读模型） |
+| `/api/v1/cases/:id` | GET | **遗留**案件读；响应含 Deprecation/Sunset，请迁移到 events |
+| `/api/v1/statistics` | GET | 统计 |
 
 ### 认证 API（需登录）
 
@@ -117,16 +121,22 @@ docker compose -f docker-compose.prod.yml up -d
 | `/api/auth/register` | POST | 注册 |
 | `/api/auth/login` | POST | 登录 |
 | `/api/auth/refresh` | POST | 刷新Token |
+| `/api/auth/send-verification-code` | POST | 发邮箱验证码（同邮箱+purpose 60s 限流） |
 
 ### 业务 API（需登录）
 
 | 端点 | 方法 | 说明 |
 |------|------|------|
-| `/api/subjects` | GET/POST | 管理黑名单 |
-| `/api/cases` | GET/POST | 管理案件 |
-| `/api/evidence` | POST | 提交证据 |
-| `/api/submissions` | GET/POST | 管理举报 |
-| `/api/appeals` | GET/POST | 管理申诉 |
+| `/api/subjects` | GET/POST | 管理对象 |
+| `/api/subjects/publish` | POST | 默认发布对象+账号+事件（JSON 或 multipart） |
+| `/api/events/:id` | GET | 已登录事件读 |
+| `/api/events/:id/appeals` | GET/POST | 事件申诉历史 / 提交申诉 |
+| `/api/appeals` | GET | 申诉列表（审核） |
+| `/api/appeals/:id/review/resolve` | POST | 申诉裁决（outcome） |
+| `/api/sanctions` / `/api/admin/sanctions` | * | 处罚与处罚申诉 |
+| `/api/cases`、`/api/submissions` | * | **兼容窗口**遗留接口，勿新接入 |
+
+公开读不依赖 API Key（产品决策：不实现 API Key）。写操作使用会话 JWT + RBAC。
 
 ## 文档
 
@@ -134,9 +144,11 @@ docker compose -f docker-compose.prod.yml up -d
 
 - `docs/roadmap.md`：开发阶段、目标与验收标准（Status 为进度；Goal 为规划）
 - `docs/configuration.md`：站点、注册、邮件与人机验证配置
+- `docs/product-decisions.md`：锁定的产品决策与 Sunset 检查清单
+- `docs/api/case-event-migration.md`：Case → Event 弃用与替代端点
 - `DESIGN.md`：前端视觉、交互和可访问性规范
 - `docs/frontend-gap-analysis.md`：前端实现进度与差距台账（滚动更新）
-- `docs/implementation-gap-analysis.md`：全栈实现进度与差距台账（滚动更新；main@49e4ddc 已合入 Phase 13 主路径）
+- `docs/implementation-gap-analysis.md`：全栈实现进度与差距台账（滚动更新）
 - `docs/compose/specs/`：设计规格（规划文档，不随实现改写目标）
 - `docs/compose/plans/`：分阶段实施计划（规划文档）
 
