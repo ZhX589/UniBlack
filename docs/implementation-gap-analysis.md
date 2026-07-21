@@ -117,7 +117,7 @@
 
 ## 2026-07-21 后续进度（feature/next-development）
 
-**分支 tip**：`d33fc98` 及后续 e2e 脚手架提交。工作区：`.worktrees/next-development`。
+**分支 tip**：`81d3615`。工作区：`.worktrees/next-development`。
 
 ### 已在隔离分支验证并提交
 

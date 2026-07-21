@@ -1,6 +1,6 @@
 # 前端现状与规划差距分析
 
-> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a` 为准，并叠加 `feature/next-development`（tip `d33fc98`+）：API client、navigation、tokens、页面级 fetch 清零、Event 详情链路、e2e 脚手架。
+> 进度台账（非规划规格）。基线曾为 `1719cab`；**2026-07-21** 起进度以 `main@b10329a` 为准，并叠加 `feature/next-development`（tip `81d3615`）：API client、navigation、tokens、页面级 fetch 清零、Event 详情链路、e2e 脚手架。
 
 全栈对象/事件/验证/治理差距见 `docs/implementation-gap-analysis.md`；本文件保留 Phase 12 前端专项进度，不改写 compose 规划正文。
 
