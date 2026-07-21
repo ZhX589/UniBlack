@@ -7,10 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/labstack/echo/v4"
+
 	"github.com/ZhX589/UniBlack/backend/internal/config"
 	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
-	"github.com/labstack/echo/v4"
 )
 
 func TestRegisterPublicEventRoutesAppliesDeprecationOnlyToLegacyCaseRoute(t *testing.T) {

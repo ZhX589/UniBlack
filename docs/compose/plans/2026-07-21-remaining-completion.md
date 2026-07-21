@@ -20,15 +20,17 @@
 
 ## Completion Snapshot (2026-07-21)
 
-### Overall
+> **Historical note:** The snapshot below described mid-branch state. After merge to `main` (`90ef0c2` + smoke fixes) and the follow-up branch `docs/gap-and-completion-2026-07-21`, Package A–C goals are delivered on `main`; remaining work is polish and Sunset retirement (see `docs/product-decisions.md`).
+
+### Overall (as of post-merge main + gap completion branch)
 
 | 范围 | 完成度 | 说明 |
 | --- | ---: | --- |
-| 相对本轮“完成这些规划”目标 | **约 82–86%** | 核心后端 + 前端主路径已落地；剩页面收口、浏览器矩阵、部署 smoke |
-| 后端 Phase 13 / 安全边界 | **约 95%** | 已提交并本地 `go test ./...` + build 通过 |
-| 前端共享基础（API/导航/token） | **约 80–85%** | 已提交基础；多数页面已迁但未全部提交 |
-| 浏览器验收 | **约 10%** | 仅有 Playwright 配置，无业务 e2e |
-| 生产部署验收 | **约 40%** | Compose/Nginx/Dockerfile 有；缺真实 smoke |
+| 相对本轮“完成这些规划”目标 | **~100% 主路径** | 页面 API 边界、e2e 21/21、生产 smoke、文档决策与 Event 申诉 UI 已落地 |
+| 后端 Phase 13 / 安全边界 | **~98%** | 含发码 60s 限流；大包异步/导入来源记录仍可选增强 |
+| 前端共享基础（API/导航/token） | **~95%** | 统一 client + appeals 导航 |
+| 浏览器验收 | **已交付** | Playwright 21/21（角色 + 视口） |
+| 生产部署验收 | **已交付** | Compose/Nginx smoke 证据见 implementation-gap 台账 |
 
 ### Already committed on `feature/next-development`
 

@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/ZhX589/UniBlack/backend/internal/models"
-	"github.com/ZhX589/UniBlack/backend/internal/setting"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/ZhX589/UniBlack/backend/internal/models"
+	"github.com/ZhX589/UniBlack/backend/internal/setting"
 )
 
 // SetupRepository performs first-run setup as one transaction.

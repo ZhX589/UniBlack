@@ -143,3 +143,17 @@
 
 - 总路线：`docs/compose/plans/2026-07-21-next-development.md`
 - 收尾包：`docs/compose/plans/2026-07-21-remaining-completion.md`
+- 产品决策：`docs/product-decisions.md`、`AGENTS.md`
+
+## 2026-07-21 文档对齐 + 体验收口（`docs/gap-and-completion-2026-07-21`）
+
+| 区域 | 状态 | 证据 |
+| --- | --- | --- |
+| 文档真源（AGENTS / roadmap Status / frontend-gap / database-design 注记） | 已对齐 | 本分支 diff |
+| API Key / OpenAPI / OAuth 决策 | 已锁定（不做 / 延后 / 仅预留） | `docs/product-decisions.md` |
+| 邮件验证码发送频率限制 | 已实现 | 同 email+purpose 60s 冷却；429；`auth_verification_rate_test.go` |
+| Event 申诉用户入口 | 已实现 | `frontend/app/events/[id]/page.tsx` |
+| Event 申诉管理队列 | 已实现 | `frontend/app/admin/appeals` + nav registry |
+| Case 兼容收束检查清单 | 文档完成（非立即删表） | `docs/product-decisions.md` Sunset checklist |
+| 后端 `go test ./...` | 通过 | 本分支验证 |
+| 前端 unit / lint / typecheck | 通过 | Vitest 10/10、eslint clean |

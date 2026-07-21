@@ -7,6 +7,9 @@ import (
 	"log"
 	"time"
 
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+
 	"github.com/ZhX589/UniBlack/backend/internal/auth"
 	"github.com/ZhX589/UniBlack/backend/internal/captcha"
 	"github.com/ZhX589/UniBlack/backend/internal/config"
@@ -16,8 +19,6 @@ import (
 	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 func registerPublicEventRoutes(group *echo.Group, getEvent, getCase echo.HandlerFunc) {
@@ -54,7 +55,23 @@ func main() {
 	}
 
 	e := echo.New()
-	e.Use(middleware.Logger())
+	// RequestLogger replaces deprecated middleware.Logger (staticcheck SA1019).
+	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:   true,
+		LogURI:      true,
+		LogMethod:   true,
+		LogLatency:  true,
+		LogError:    true,
+		HandleError: true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			if v.Error != nil {
+				log.Printf("%s %s %d %s err=%v", v.Method, v.URI, v.Status, v.Latency, v.Error)
+			} else {
+				log.Printf("%s %s %d %s", v.Method, v.URI, v.Status, v.Latency)
+			}
+			return nil
+		},
+	}))
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 

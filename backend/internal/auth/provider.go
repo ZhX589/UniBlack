@@ -6,11 +6,11 @@ import (
 
 // SubjectIdentity represents the authenticated user's identity
 type SubjectIdentity struct {
-	UserID    string   `json:"user_id"`
-	Username  string   `json:"username"`
-	Email     string   `json:"email"`
-	Roles     []string `json:"roles"`
-	Provider  string   `json:"provider"`
+	UserID   string   `json:"user_id"`
+	Username string   `json:"username"`
+	Email    string   `json:"email"`
+	Roles    []string `json:"roles"`
+	Provider string   `json:"provider"`
 }
 
 // Credentials represents the authentication credentials

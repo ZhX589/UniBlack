@@ -4,8 +4,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
 // AuthHandler handles authentication requests
@@ -134,6 +135,9 @@ func (h *AuthHandler) SendVerificationCode(c echo.Context) error {
 	}
 
 	if err := h.authService.SendVerificationCodeForPurpose(c.Request().Context(), req.Email, purpose); err != nil {
+		if err == service.ErrVerificationRateLimited {
+			return c.JSON(http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+		}
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 

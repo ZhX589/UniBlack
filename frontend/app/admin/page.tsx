@@ -80,8 +80,11 @@ export default function AdminPage() {
         <Link href="/submit">
           <Button>Event 发布入口</Button>
         </Link>
+        <Link href="/admin/appeals">
+          <Button variant="secondary">事件申诉队列</Button>
+        </Link>
         <Link href="/admin/sanctions">
-          <Button variant="secondary">处罚与申诉裁决</Button>
+          <Button variant="secondary">处罚裁决</Button>
         </Link>
         <Link href="/admin/archives">
           <Button variant="secondary">归档导入导出</Button>

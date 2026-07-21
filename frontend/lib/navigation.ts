@@ -18,6 +18,7 @@ export const navigationRegistry: NavItem[] = [
   { href: '/login', label: '登录', area: 'public' },
   { href: '/register', label: '注册', area: 'public', feature: 'registration' },
   { href: '/admin', label: '审核', area: 'admin', requiresAuth: true, roles: ['admin', 'moderator'], exact: true },
+  { href: '/admin/appeals', label: '事件申诉', area: 'admin', requiresAuth: true, roles: ['admin', 'moderator'] },
   { href: '/admin/users', label: '用户', area: 'admin', requiresAuth: true, roles: ['admin'] },
   { href: '/admin/access-lists', label: '访问名单', area: 'admin', requiresAuth: true, roles: ['admin'] },
   { href: '/admin/sanctions', label: '处罚', area: 'admin', requiresAuth: true, roles: ['admin'] },

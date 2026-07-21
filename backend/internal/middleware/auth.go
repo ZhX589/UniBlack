@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
 // AuthMiddleware creates JWT authentication middleware

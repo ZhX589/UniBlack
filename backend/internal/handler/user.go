@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
+
+	"github.com/ZhX589/UniBlack/backend/internal/repository"
 )
 
 // UserManagementHandler handles user management requests

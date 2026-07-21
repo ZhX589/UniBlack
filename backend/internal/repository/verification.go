@@ -5,8 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
+
+	"github.com/ZhX589/UniBlack/backend/internal/models"
 )
 
 var ErrVerificationNotFound = errors.New("verification code not found")
@@ -50,4 +51,21 @@ func (r *VerificationRepository) InvalidateEmail(ctx context.Context, email, pur
 		Model(&models.VerificationCode{}).
 		Where("email = ? AND purpose = ? AND used_at IS NULL", email, purpose).
 		Update("used_at", now).Error
+}
+
+// LatestCreatedAt returns the created_at of the newest code for email+purpose, if any.
+func (r *VerificationRepository) LatestCreatedAt(ctx context.Context, email, purpose string) (time.Time, bool, error) {
+	var row models.VerificationCode
+	err := r.db.WithContext(ctx).
+		Select("created_at").
+		Where("email = ? AND purpose = ?", email, purpose).
+		Order("created_at DESC").
+		First(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, err
+	}
+	return row.CreatedAt, true, nil
 }

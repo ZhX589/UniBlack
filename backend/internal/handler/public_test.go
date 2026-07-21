@@ -5,8 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/labstack/echo/v4"
+
+	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 )
 
 func TestPublicCaseAliasRouteReturnsDeprecationHeaders(t *testing.T) {

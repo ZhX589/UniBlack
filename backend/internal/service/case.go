@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -99,7 +98,7 @@ func (s *CaseService) CreateCase(ctx context.Context, req CreateCaseRequest, sub
 	}
 
 	// Create audit log
-	s.createAuditLog(ctx, submittedBy, "create", "case", c.ID, nil)
+	s.createAuditLog(ctx, submittedBy, "create", c.ID, nil)
 
 	return c, nil
 }
@@ -150,7 +149,7 @@ func (s *CaseService) UpdateCase(ctx context.Context, id string, req UpdateCaseR
 	}
 
 	// Create audit log
-	s.createAuditLog(ctx, updatedBy, "update", "case", c.ID, oldValues)
+	s.createAuditLog(ctx, updatedBy, "update", c.ID, oldValues)
 
 	return c, nil
 }
@@ -176,7 +175,7 @@ func (s *CaseService) DeleteCase(ctx context.Context, id, deletedBy string) erro
 	}
 
 	// Create audit log
-	s.createAuditLog(ctx, deletedBy, "delete", "case", c.ID, nil)
+	s.createAuditLog(ctx, deletedBy, "delete", c.ID, nil)
 
 	return nil
 }
@@ -200,7 +199,7 @@ func (s *CaseService) ReviewCase(ctx context.Context, id string, req ReviewCaseR
 	}
 
 	// Create audit log
-	s.createAuditLog(ctx, reviewedBy, "review", "case", c.ID, oldValues)
+	s.createAuditLog(ctx, reviewedBy, "review", c.ID, oldValues)
 
 	// Reload case
 	return s.caseRepo.GetCaseByID(ctx, id)
@@ -216,18 +215,13 @@ func (s *CaseService) GetCasesBySubjectID(ctx context.Context, subjectID string)
 	return s.caseRepo.GetCasesBySubjectID(ctx, subjectID)
 }
 
-// createAuditLog creates an audit log entry
-func (s *CaseService) createAuditLog(ctx context.Context, userID, action, resourceType, resourceID string, oldValues map[string]interface{}) {
-	changesJSON, _ := json.Marshal(oldValues)
-	changes := make(map[string]interface{})
-	json.Unmarshal(changesJSON, &changes)
-
-	auditLog := &models.AuditLog{
+// createAuditLog creates an audit log entry for case resources.
+func (s *CaseService) createAuditLog(ctx context.Context, userID, action, resourceID string, oldValues map[string]interface{}) {
+	_ = s.auditRepo.CreateAuditLog(ctx, &models.AuditLog{
 		UserID:       &userID,
 		Action:       action,
-		ResourceType: resourceType,
+		ResourceType: "case",
 		ResourceID:   &resourceID,
-		Changes:      changes,
-	}
-	s.auditRepo.CreateAuditLog(ctx, auditLog)
+		Changes:      oldValues,
+	})
 }

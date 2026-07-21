@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
 func TestRegisterMapsBlacklistLookupFailureToServiceUnavailable(t *testing.T) {

@@ -3,8 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/ZhX589/UniBlack/backend/internal/captcha"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ZhX589/UniBlack/backend/internal/captcha"
 )
 
 // VerificationHandler exposes the built-in demonstration captcha token issuer.

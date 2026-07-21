@@ -98,11 +98,14 @@ jobs:
         with:
           go-version-file: backend/go.mod
 
+      # Binary releases of golangci-lint lag go.mod toolchain versions; install via
+      # goinstall so the linter is built with the same Go as setup-go / go.mod.
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v1.64.8
           working-directory: backend
+          install-mode: goinstall
 
       - name: Set up Node.js
         uses: actions/setup-node@v4

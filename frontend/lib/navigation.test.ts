@@ -27,7 +27,7 @@ describe('visibleNavigation', () => {
       registrationEnabled: true,
       area: 'admin',
     })
-    expect(moderator.map((item) => item.href)).toEqual(['/admin'])
+    expect(moderator.map((item) => item.href)).toEqual(['/admin', '/admin/appeals'])
 
     const admin = visibleNavigation({
       authenticated: true,
@@ -37,6 +37,7 @@ describe('visibleNavigation', () => {
     })
     expect(admin.map((item) => item.href)).toContain('/admin/settings')
     expect(admin.map((item) => item.href)).toContain('/admin/users')
+    expect(admin.map((item) => item.href)).toContain('/admin/appeals')
   })
 
   it('matches nested admin routes without exact equality', () => {

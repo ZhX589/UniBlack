@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/ZhX589/UniBlack/backend/internal/service"
 	"github.com/labstack/echo/v4"
+
+	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
 // SubjectHandler handles subject requests
@@ -82,9 +83,9 @@ func (h *SubjectHandler) ListSubjects(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"subjects": subjects,
-		"total":    total,
-		"page":     page,
+		"subjects":  subjects,
+		"total":     total,
+		"page":      page,
 		"page_size": pageSize,
 	})
 }

@@ -5,8 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/ZhX589/UniBlack/backend/internal/models"
 )
 
 var ErrAlreadyInitialized = errors.New("system already initialized")
