@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
@@ -31,6 +32,9 @@ type EvidenceManifest struct {
 	OriginalFilename string `json:"original_filename,omitempty"`
 	SHA256           string `json:"sha256,omitempty"`
 	Type             string `json:"type"`
+	Title            string `json:"title,omitempty"`
+	Description      string `json:"description,omitempty"`
+	URL              string `json:"url,omitempty"`
 }
 type EventManifest struct {
 	ID       string             `json:"id"`
@@ -152,8 +156,17 @@ func readArchive(r io.Reader) (Manifest, map[string][]byte, error) {
 			return Manifest{}, nil, fmt.Errorf("invalid event status: %s", event.Status)
 		}
 		for _, evidence := range event.Evidence {
-			if evidence.FileName == "" {
+			if evidence.Type == "link" {
+				if evidence.FileName != "" || evidence.SHA256 != "" || evidence.OriginalFilename != "" {
+					return Manifest{}, nil, fmt.Errorf("link evidence must not include body metadata")
+				}
+				if err := domain.ValidateLinkEvidence(evidence.Title, evidence.URL); err != nil {
+					return Manifest{}, nil, fmt.Errorf("invalid link evidence")
+				}
 				continue
+			}
+			if evidence.FileName == "" {
+				return Manifest{}, nil, fmt.Errorf("missing evidence file name")
 			}
 			if err := validateEvidenceName(manifest.PublicID, evidence.FileName); err != nil {
 				return Manifest{}, nil, err
@@ -162,23 +175,29 @@ func readArchive(r io.Reader) (Manifest, map[string][]byte, error) {
 				return Manifest{}, nil, fmt.Errorf("duplicate evidence file name: %s", evidence.FileName)
 			}
 			seenEvidence[evidence.FileName] = true
-			if evidence.Type != "file" && evidence.Type != "text" && evidence.Type != "link" {
+			if evidence.Type != "file" && evidence.Type != "text" {
 				return Manifest{}, nil, fmt.Errorf("invalid evidence type: %s", evidence.Type)
 			}
-			if evidence.Type != "link" {
-				if len(evidence.SHA256) != 64 {
-					return Manifest{}, nil, fmt.Errorf("missing evidence hash: %s", evidence.FileName)
-				}
+			if len(evidence.SHA256) != 64 {
+				return Manifest{}, nil, fmt.Errorf("missing evidence hash: %s", evidence.FileName)
 			}
 			content, ok := files[evidence.FileName]
 			if !ok {
 				return Manifest{}, nil, fmt.Errorf("missing evidence file: %s", evidence.FileName)
 			}
-			if evidence.SHA256 != "" {
-				sum := sha256.Sum256(content)
-				if evidence.SHA256 != hex.EncodeToString(sum[:]) {
-					return Manifest{}, nil, fmt.Errorf("evidence hash mismatch: %s", evidence.FileName)
-				}
+			sum := sha256.Sum256(content)
+			if evidence.SHA256 != hex.EncodeToString(sum[:]) {
+				return Manifest{}, nil, fmt.Errorf("evidence hash mismatch: %s", evidence.FileName)
+			}
+		}
+	}
+	for name := range files {
+		switch name {
+		case "manifest.json", "README.txt":
+			continue
+		default:
+			if !seenEvidence[name] {
+				return Manifest{}, nil, fmt.Errorf("unreferenced archive entry: %s", name)
 			}
 		}
 	}
@@ -205,6 +224,22 @@ func (s *ArchiveService) Build(ctx context.Context, publicID string) ([]byte, er
 		}
 		for _, v := range items {
 			item := EvidenceManifest{Type: v.Type}
+			if v.Title != nil {
+				item.Title = *v.Title
+			}
+			if v.Description != nil {
+				item.Description = *v.Description
+			}
+			if v.Type == "link" {
+				if v.URL != nil {
+					item.URL = *v.URL
+				}
+				em.Evidence = append(em.Evidence, item)
+				continue
+			}
+			if v.URL != nil {
+				item.URL = *v.URL
+			}
 			if v.OriginalFilename != nil {
 				item.OriginalFilename = *v.OriginalFilename
 			}
@@ -362,7 +397,12 @@ func (s *ArchiveService) Import(ctx context.Context, r io.Reader, actorID string
 		}
 		events = append(events, models.Event{Title: m.Title, Details: m.Details, Status: status, Severity: 1, SubmittedBy: &actorID})
 		for _, item := range m.Evidence {
-			if item.FileName == "" || item.Type == "link" {
+			if item.Type == "link" {
+				title, description, url := item.Title, item.Description, item.URL
+				evidenceRows = append(evidenceRows, repository.EventEvidence{EventIndex: eventIndex, Evidence: models.Evidence{Type: "link", Title: &title, Description: &description, URL: &url, UploadedBy: &actorID}})
+				continue
+			}
+			if item.FileName == "" {
 				continue
 			}
 			key := item.FileName

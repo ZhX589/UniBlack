@@ -1,150 +1,152 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/app/providers'
+import { apiRequest } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
+import type { AdminUser } from '@/lib/types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
+import { LoadingState } from '@/components/ui/loading-state'
+import { Panel } from '@/components/ui/panel'
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<any[]>([])
+  const { status } = useAuth()
+  const router = useRouter()
+  const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  useEffect(() => {
-    fetchUsers()
-  }, [page, search])
-
-  const fetchUsers = async () => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      window.location.href = '/login'
-      return
-    }
-
+  const fetchUsers = useCallback(async () => {
+    if (status !== 'authenticated') return
     setLoading(true)
+    setError('')
     try {
-      const res = await fetch(`/api/admin/users?page=${page}&page_size=20&search=${search}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      const data = await res.json()
+      const data = await apiRequest<{ users?: AdminUser[]; total?: number }>(
+        `/api/admin/users?page=${page}&page_size=20&search=${encodeURIComponent(search)}`,
+        { auth: true },
+      )
       setUsers(data.users || [])
       setTotal(data.total || 0)
-    } catch (error) {
-      console.error('Failed to fetch users:', error)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '加载用户失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, search, status])
+
+  useEffect(() => {
+    if (status === 'anonymous') router.replace('/login?next=/admin/users')
+  }, [status, router])
+
+  useEffect(() => {
+    void fetchUsers()
+  }, [fetchUsers])
 
   const handleToggleActive = async (userId: string, active: boolean) => {
-    const token = localStorage.getItem('token')
-    if (!token) return
-
     try {
-      await fetch(`/api/admin/users/${userId}/active`, {
+      await apiRequest(`/api/admin/users/${userId}/active`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ active }),
+        auth: true,
+        json: { active },
       })
-      fetchUsers()
-    } catch (error) {
-      console.error('Failed to toggle user active:', error)
+      await fetchUsers()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '更新用户失败')
     }
   }
 
-  return (
-    <div className="py-8">
-      <h1 className="text-3xl font-bold mb-6">用户管理</h1>
+  if (status === 'loading') return <LoadingState />
+  if (status === 'anonymous') return null
 
-      <div className="bg-white rounded-lg shadow-md">
-        <div className="p-4 border-b">
+  return (
+    <div className="py-4">
+      <h1 className="mb-6 text-3xl font-bold">用户管理</h1>
+      <Panel className="p-0">
+        <div className="border-b border-border p-4">
+          <label htmlFor="user-search" className="sr-only">
+            搜索用户
+          </label>
           <input
-            type="text"
+            id="user-search"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setPage(1)
+              setSearch(e.target.value)
+            }}
             placeholder="搜索用户名或邮箱..."
-            className="w-full border rounded-lg px-4 py-2"
+            className="min-h-touch w-full rounded border border-border px-4 py-2"
           />
         </div>
-
-        {loading ? (
-          <div className="p-8 text-center">加载中...</div>
-        ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">用户名</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">邮箱</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">角色</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">状态</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">最后登录</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td className="px-6 py-4">{user.username}</td>
-                  <td className="px-6 py-4">{user.email}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex gap-1">
-                      {user.roles.map((role: string, i: number) => (
-                        <span key={i} className="px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                          {role}
-                        </span>
-                      ))}
-                      {user.roles.length === 0 && (
-                        <span className="text-gray-400">无角色</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {user.is_active ? '活跃' : '禁用'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {user.last_login_at ? new Date(user.last_login_at).toLocaleString() : '从未登录'}
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleToggleActive(user.id, !user.is_active)}
-                      className={`text-sm ${user.is_active ? 'text-red-600 hover:underline' : 'text-green-600 hover:underline'}`}
-                    >
-                      {user.is_active ? '禁用' : '启用'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {error && (
+          <div className="p-4">
+            <ErrorState message={error} />
+          </div>
         )}
-
-        <div className="p-4 border-t flex justify-between items-center">
-          <div className="text-gray-500">共 {total} 个用户</div>
+        {loading ? (
+          <LoadingState />
+        ) : users.length === 0 ? (
+          <div className="p-6">
+            <EmptyState message="暂无用户" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead className="bg-background text-left text-muted">
+                <tr>
+                  <th className="px-4 py-3">用户名</th>
+                  <th className="px-4 py-3">邮箱</th>
+                  <th className="px-4 py-3">角色</th>
+                  <th className="px-4 py-3">状态</th>
+                  <th className="px-4 py-3">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((user) => (
+                  <tr key={user.id} className="border-t border-border">
+                    <td className="px-4 py-3">{user.username}</td>
+                    <td className="px-4 py-3">{user.email}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(user.roles || []).map((role) => (
+                          <Badge key={role}>{role}</Badge>
+                        ))}
+                        {(user.roles || []).length === 0 && <span className="text-muted">无角色</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge tone={user.is_active ? 'success' : 'danger'}>{user.is_active ? '活跃' : '禁用'}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button variant="ghost" onClick={() => handleToggleActive(user.id, !user.is_active)}>
+                        {user.is_active ? '禁用' : '启用'}
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="flex items-center justify-between border-t border-border p-4 text-sm">
+          <div className="text-muted">共 {total} 个用户</div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
+            <Button variant="secondary" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>
               上一页
-            </button>
-            <span className="px-3 py-1">{page}</span>
-            <button
-              onClick={() => setPage(page + 1)}
-              disabled={users.length < 20}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
+            </Button>
+            <span className="px-3 py-2">{page}</span>
+            <Button variant="secondary" onClick={() => setPage(page + 1)} disabled={users.length < 20}>
               下一页
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Panel>
     </div>
   )
 }

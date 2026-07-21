@@ -4,6 +4,16 @@ import Link from 'next/link'
 import { useState, type FormEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/app/providers'
+import { apiRequest } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Panel } from '@/components/ui/panel'
+
+type LoginResponse = {
+  access_token: string
+  refresh_token: string
+}
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -14,96 +24,75 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const handleLogin = async (e: FormEvent) => {
-    e.preventDefault()
+  const handleLogin = async (event: FormEvent) => {
+    event.preventDefault()
     setLoading(true)
     setError('')
-
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+      const data = await apiRequest<LoginResponse>('/api/auth/login', {
+        json: { username, password },
       })
-
-      if (res.ok) {
-        const data = await res.json()
-        login(data.access_token, data.refresh_token)
-        const next = search.get('next') || '/'
-        router.replace(next.startsWith('/') && !next.startsWith('//') ? next : '/')
-        return
+      login(data.access_token, data.refresh_token)
+      const next = search.get('next') || '/'
+      router.replace(next.startsWith('/') && !next.startsWith('//') ? next : '/')
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.status === 401 ? '用户名或密码错误' : err.message)
+      } else {
+        setError('无法连接后端 API，请确认后端已启动')
       }
-
-      let message = '登录失败，请稍后重试'
-      try {
-        const data = await res.json()
-        if (res.status === 401) {
-          message = '用户名或密码错误'
-        } else if (data?.error) {
-          message = data.error
-        } else if (res.status === 404 || res.status >= 500) {
-          message = '无法连接后端 API，请确认后端已在 :8080 启动'
-        }
-      } catch {
-        if (res.status === 404 || res.status >= 500) {
-          message = '无法连接后端 API，请确认后端已在 :8080 启动'
-        }
-      }
-      setError(message)
-    } catch {
-      setError('无法连接后端 API，请确认后端已在 :8080 启动')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center mb-6">登录</h1>
-
+    <div className="flex min-h-[70vh] items-center justify-center py-8">
+      <Panel className="w-full max-w-md">
+        <h1 className="mb-6 text-center text-2xl font-bold">登录</h1>
         {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4">
-            {error}
+          <div className="mb-4">
+            <Alert>{error}</Alert>
           </div>
         )}
-
-        <form onSubmit={handleLogin}>
-          <div className="mb-4">
-            <label className="block text-gray-700 mb-2">用户名</label>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label htmlFor="login-username" className="mb-2 block text-sm text-foreground">
+              用户名
+            </label>
             <input
+              id="login-username"
               type="text"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full border rounded-lg px-4 py-2"
+              onChange={(event) => setUsername(event.target.value)}
+              className="min-h-touch w-full rounded border border-border px-4 py-2"
               required
             />
           </div>
-
-          <div className="mb-6">
-            <label className="block text-gray-700 mb-2">密码</label>
+          <div>
+            <label htmlFor="login-password" className="mb-2 block text-sm text-foreground">
+              密码
+            </label>
             <input
+              id="login-password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border rounded-lg px-4 py-2"
+              onChange={(event) => setPassword(event.target.value)}
+              className="min-h-touch w-full rounded border border-border px-4 py-2"
               required
             />
           </div>
-
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700"
-            disabled={loading}
-          >
+          <Button type="submit" className="w-full" disabled={loading}>
             {loading ? '登录中...' : '登录'}
-          </button>
+          </Button>
         </form>
-
-        <div className="mt-4 text-center text-gray-500">
-          <p>还没有账号？<Link href="/register" className="text-blue-600 hover:underline">注册</Link></p>
-        </div>
-      </div>
+        <p className="mt-4 text-center text-sm text-muted">
+          还没有账号？
+          <Link href="/register" className="text-primary hover:underline">
+            注册
+          </Link>
+        </p>
+      </Panel>
     </div>
   )
 }

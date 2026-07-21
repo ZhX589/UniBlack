@@ -1,52 +1,90 @@
+'use client'
+
+import Link from 'next/link'
+import { FormEvent, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { apiRequest } from '@/lib/api'
+import type { Statistics } from '@/lib/types'
+import { useSite } from '@/app/providers'
+import { Button } from '@/components/ui/button'
+import { Panel } from '@/components/ui/panel'
+import { Alert } from '@/components/ui/alert'
+
 export default function Home() {
+  const { name, description } = useSite()
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [stats, setStats] = useState<Statistics | null>(null)
+  const [statsError, setStatsError] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    apiRequest<Statistics>('/api/v1/statistics')
+      .then((data) => {
+        if (!cancelled) setStats(data)
+      })
+      .catch(() => {
+        if (!cancelled) setStatsError(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  function onVerify(event: FormEvent) {
+    event.preventDefault()
+    const value = query.trim()
+    if (!value) return
+    router.push(`/search?q=${encodeURIComponent(value)}`)
+  }
+
   return (
-    <div className="py-8">
-      <h1 className="text-4xl font-bold mb-6">UniBlack - 云黑名单系统</h1>
-      <p className="text-gray-600 mb-8">
-        一个可复用的通用云黑系统，支持在线提交查询、通用查询API、申诉、管理员审核和追责。
+    <div className="mx-auto max-w-5xl py-8">
+      <h1 className="mb-3 text-4xl font-bold text-foreground">{name}</h1>
+      <p className="mb-8 max-w-3xl text-muted">
+        {description || '社区维护的可复用云黑系统。核验账号、查看公开事件，并在登录后提交证据。'}
       </p>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-3">查询</h2>
-          <p className="text-gray-600 mb-4">通过QQ、微信、B站等平台查询某人是否在黑名单中。</p>
-          <a href="/search" className="text-blue-600 hover:underline">开始查询 →</a>
+      <Panel className="mb-8">
+        <h2 className="mb-2 text-xl font-semibold">核验账号</h2>
+        <p className="mb-4 text-sm text-muted">输入平台账号、用户名或公开 ID，立即查询是否存在公开记录。</p>
+        <form onSubmit={onVerify} className="flex flex-col gap-3 sm:flex-row">
+          <label className="sr-only" htmlFor="home-verify">
+            核验账号
+          </label>
+          <input
+            id="home-verify"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="QQ / Discord / Telegram / 邮箱..."
+            className="min-h-touch flex-1 rounded border border-border bg-surface px-4 py-2"
+          />
+          <Button type="submit">开始核验</Button>
+        </form>
+        <div className="mt-4 flex flex-wrap gap-4 text-sm">
+          <Link href="/search" className="text-primary hover:underline">
+            高级查询
+          </Link>
+          <Link href="/submit" className="text-primary hover:underline">
+            登录后提交
+          </Link>
         </div>
+      </Panel>
 
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-3">举报</h2>
-          <p className="text-gray-600 mb-4">提交举报信息，帮助社区维护安全环境。</p>
-          <a href="/submit" className="text-blue-600 hover:underline">提交举报 →</a>
+      <section>
+        <h2 className="mb-3 text-lg font-semibold">公开统计</h2>
+        {statsError && <Alert tone="warning">统计暂不可用，查询功能不受影响。</Alert>}
+        <div className="mt-3 grid grid-cols-2 gap-4 md:grid-cols-2">
+          <Panel className="text-center">
+            <div className="text-3xl font-bold">{stats ? stats.subjects : '—'}</div>
+            <div className="text-sm text-muted">活跃对象</div>
+          </Panel>
+          <Panel className="text-center">
+            <div className="text-3xl font-bold">{stats ? stats.events : '—'}</div>
+            <div className="text-sm text-muted">公开事件</div>
+          </Panel>
         </div>
-
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-3">申诉</h2>
-          <p className="text-gray-600 mb-4">如果您认为判决有误，可以提交申诉。</p>
-          <a href="/login" className="text-blue-600 hover:underline">登录后申诉 →</a>
-        </div>
-      </div>
-
-      <div className="mt-12">
-        <h2 className="text-2xl font-bold mb-4">统计信息</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-blue-500 text-white rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold">-</div>
-            <div className="text-sm">黑名单对象</div>
-          </div>
-          <div className="bg-green-500 text-white rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold">-</div>
-            <div className="text-sm">已审核案件</div>
-          </div>
-          <div className="bg-yellow-500 text-white rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold">-</div>
-            <div className="text-sm">待审核</div>
-          </div>
-          <div className="bg-purple-500 text-white rounded-lg p-4 text-center">
-            <div className="text-3xl font-bold">-</div>
-            <div className="text-sm">已处理申诉</div>
-          </div>
-        </div>
-      </div>
+      </section>
     </div>
   )
 }

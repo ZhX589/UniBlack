@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ZhX589/UniBlack/backend/internal/service"
@@ -37,6 +38,9 @@ func (h *AuthHandler) Register(c echo.Context) error {
 		}
 		if err == service.ErrInvalidCode {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid verification code"})
+		}
+		if errors.Is(err, service.ErrAccessControlUnavailable) {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "registration unavailable"})
 		}
 		return c.JSON(http.StatusConflict, map[string]string{"error": err.Error()})
 	}

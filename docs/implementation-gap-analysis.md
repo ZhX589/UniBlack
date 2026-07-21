@@ -6,7 +6,7 @@
 >
 > **已落地并验证**：迁移 `000006`–`000010`、`UBS_<ULID>`、Account/Event 兼容层、真实 LocalStorage、multipart 多文件+文本同事务发布、Event 独立文件上传、处罚列表/撤销/一次申诉/管理裁决、demo captcha、归档导出/预览/确认导入加固、动态 Auth/Settings Shell 与管理侧栏。
 >
-> **仍未完成**：旧 Case API 弃用窗口、MinIO/S3 adapter、Phase 12 完整 design token / 统一 API client / Playwright 矩阵、链接证据随发布、malicious 自动建处罚。
+> **仍未完成（以 `feature/next-development` 为准，见文末 2026-07-21 进度）**：Playwright 浏览器实测、生产 Compose/Nginx smoke、旧 Submission 审核 UI 兼容窗口收束。
 
 ## 阅读规则
 
@@ -115,13 +115,34 @@
 
 ## 差距结论
 
-当前剩余的主要差距：
+## 2026-07-21 后续进度（feature/next-development）
+
+**分支 tip**：见 `git log -1`（含 Playwright 实测通过后的提交）。工作区：`.worktrees/next-development`。
+
+### 已在隔离分支验证并提交
+
+| 区域 | 证据 |
+| --- | --- |
+| Case API 弃用窗口 | 弃用头 + `docs/api/case-event-migration.md`；本地 `go test` |
+| MinIO/S3 + 生产 fail-closed 存储 | `storage/s3.go`、`selectStorage` 测试；生产缺 endpoint 拒绝启动 |
+| 启动/初始化/访问控制 | 原子 setup、黑白名单、动态限速、迁移 CI |
+| Event 治理闭环 | 链接证据随发布、Event-first 申诉、malicious→warning、Account-first 查询、真实 statistics、迁移 `000011`；`DATABASE_URL=... go test ./...` 通过 |
+| 前端共享边界 | `lib/api.ts` / navigation registry / design tokens / 最小 UI；`npm run test:run && typecheck && lint && build` 通过 |
+| 页面级 token/fetch 清零 | `d33fc98`：全站页面不再直连 `localStorage` token / 页面 `fetch`（仅 `providers` 持 token） |
+| Playwright 角色/视口 | `E2E_ALLOW_DEFAULT_USERS=1 npm run test:e2e` → **21 passed**（desktop/tablet/mobile，系统 Chrome channel） |
+
+### 当前剩余差距 / 环境阻塞
 
 ```text
-旧 Case API 与旧 Submission 审核仍兼容并存
-  → 需弃用窗口与文档迁移说明
-MinIO/S3 adapter 与生产对象存储切换未做
-Phase 12 完整 design token / 统一 API client / Playwright 矩阵未完成
+生产 Compose/Nginx 同源 smoke：本机用户无 docker.sock 权限
+  证据：docker info → permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+  用户组：ZhX input wheel（无 docker 组）；需 root 将用户加入 docker 组或 sudo 后重跑
+旧 Submission 审核 UI 仍处兼容窗口（有意保留至 Sunset，非功能回归）
+本地 API smoke（非 Docker）：GET /api/settings/public 200；GET /api/v1/statistics 200；
+  POST /api/auth/login admin/testuser 200 + access_token
 ```
 
-发布多文件事务与处罚申诉主路径已验收。下一步优先：旧 Case 弃用窗口、对象存储后端切换、Phase 12 剩余验收。
+### 计划文档
+
+- 总路线：`docs/compose/plans/2026-07-21-next-development.md`
+- 收尾包：`docs/compose/plans/2026-07-21-remaining-completion.md`

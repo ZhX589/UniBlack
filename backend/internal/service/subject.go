@@ -156,6 +156,10 @@ func (s *SubjectService) SearchSubjects(ctx context.Context, query string) ([]mo
 	return s.subjectRepo.SearchSubjects(ctx, query)
 }
 
+func (s *SubjectService) PublicStatistics(ctx context.Context) (int64, int64, error) {
+	return s.subjectRepo.PublicStatistics(ctx)
+}
+
 // AddIdentifier adds an identifier to a subject
 func (s *SubjectService) AddIdentifier(ctx context.Context, subjectID string, req IdentifierRequest) (*models.Identifier, error) {
 	// Verify subject exists

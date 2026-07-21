@@ -1,244 +1,227 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/app/providers'
+import { apiRequest } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
+import type { AccessListEntry } from '@/lib/types'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { ErrorState } from '@/components/ui/error-state'
+import { LoadingState } from '@/components/ui/loading-state'
+import { Panel } from '@/components/ui/panel'
+
+type AccessListRow = AccessListEntry & { created_at?: string }
 
 export default function AccessListsPage() {
-  const [entries, setEntries] = useState<any[]>([])
+  const { status } = useAuth()
+  const router = useRouter()
+  const [entries, setEntries] = useState<AccessListRow[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [type, setType] = useState('')
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  const [error, setError] = useState('')
   const [newEntry, setNewEntry] = useState({ type: 'blacklist', target: 'ip', value: '', reason: '' })
 
-  useEffect(() => {
-    fetchEntries()
-  }, [page, type])
-
-  const fetchEntries = async () => {
-    const token = localStorage.getItem('token')
-    if (!token) {
-      window.location.href = '/login'
-      return
-    }
-
+  const fetchEntries = useCallback(async () => {
+    if (status !== 'authenticated') return
     setLoading(true)
+    setError('')
     try {
-      const res = await fetch(`/api/admin/access-lists?page=${page}&page_size=20&type=${type}`, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      const data = await res.json()
+      const data = await apiRequest<{ entries?: AccessListRow[]; total?: number }>(
+        `/api/admin/access-lists?page=${page}&page_size=20&type=${encodeURIComponent(type)}`,
+        { auth: true },
+      )
       setEntries(data.entries || [])
       setTotal(data.total || 0)
-    } catch (error) {
-      console.error('Failed to fetch entries:', error)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '加载名单失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, status, type])
 
-  const handleAdd = async () => {
-    const token = localStorage.getItem('token')
-    if (!token) return
+  useEffect(() => {
+    if (status === 'anonymous') router.replace('/login?next=/admin/access-lists')
+  }, [status, router])
 
+  useEffect(() => {
+    void fetchEntries()
+  }, [fetchEntries])
+
+  async function handleAdd() {
     try {
-      await fetch('/api/admin/access-lists', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(newEntry),
-      })
+      await apiRequest('/api/admin/access-lists', { auth: true, json: newEntry })
       setShowAdd(false)
       setNewEntry({ type: 'blacklist', target: 'ip', value: '', reason: '' })
-      fetchEntries()
-    } catch (error) {
-      console.error('Failed to add entry:', error)
+      await fetchEntries()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '添加失败')
     }
   }
 
-  const handleDelete = async (id: string) => {
-    const token = localStorage.getItem('token')
-    if (!token) return
-
-    if (!confirm('确定删除此条目？')) return
-
+  async function handleDelete(id: string) {
+    if (!window.confirm('确定删除此条目？')) return
     try {
-      await fetch(`/api/admin/access-lists/${id}`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` },
-      })
-      fetchEntries()
-    } catch (error) {
-      console.error('Failed to delete entry:', error)
+      await apiRequest(`/api/admin/access-lists/${id}`, { method: 'DELETE', auth: true })
+      await fetchEntries()
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '删除失败')
     }
   }
+
+  if (status === 'loading') return <LoadingState />
+  if (status === 'anonymous') return null
 
   return (
-    <div className="py-8">
-      <div className="flex justify-between items-center mb-6">
+    <div className="py-4">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">名单管理</h1>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          添加条目
-        </button>
+        <Button onClick={() => setShowAdd(true)}>添加条目</Button>
       </div>
 
-      <div className="flex gap-4 mb-6">
-        <button
-          onClick={() => setType('')}
-          className={`px-4 py-2 rounded-lg ${type === '' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}
-        >
-          全部
-        </button>
-        <button
-          onClick={() => setType('whitelist')}
-          className={`px-4 py-2 rounded-lg ${type === 'whitelist' ? 'bg-green-600 text-white' : 'bg-gray-200'}`}
-        >
-          白名单
-        </button>
-        <button
-          onClick={() => setType('blacklist')}
-          className={`px-4 py-2 rounded-lg ${type === 'blacklist' ? 'bg-red-600 text-white' : 'bg-gray-200'}`}
-        >
-          黑名单
-        </button>
+      <div className="mb-6 flex flex-wrap gap-2">
+        {[
+          { value: '', label: '全部' },
+          { value: 'whitelist', label: '白名单' },
+          { value: 'blacklist', label: '黑名单' },
+        ].map((item) => (
+          <Button
+            key={item.value || 'all'}
+            variant={type === item.value ? 'primary' : 'secondary'}
+            onClick={() => {
+              setPage(1)
+              setType(item.value)
+            }}
+          >
+            {item.label}
+          </Button>
+        ))}
       </div>
+
+      {error && (
+        <div className="mb-4">
+          <ErrorState message={error} />
+        </div>
+      )}
 
       {showAdd && (
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">添加条目</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-gray-700 mb-2">类型</label>
+        <Panel className="mb-6">
+          <h2 className="mb-4 text-xl font-semibold">添加条目</h2>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block text-sm">
+              类型
               <select
                 value={newEntry.type}
                 onChange={(e) => setNewEntry({ ...newEntry, type: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2"
+                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               >
                 <option value="blacklist">黑名单</option>
                 <option value="whitelist">白名单</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-gray-700 mb-2">目标</label>
+            </label>
+            <label className="block text-sm">
+              目标
               <select
                 value={newEntry.target}
                 onChange={(e) => setNewEntry({ ...newEntry, target: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2"
+                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               >
                 <option value="ip">IP</option>
                 <option value="email">邮箱</option>
                 <option value="username">用户名</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-gray-700 mb-2">值</label>
+            </label>
+            <label className="block text-sm">
+              值
               <input
-                type="text"
                 value={newEntry.value}
                 onChange={(e) => setNewEntry({ ...newEntry, value: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2"
+                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
                 placeholder="IP/邮箱/用户名"
               />
-            </div>
-            <div>
-              <label className="block text-gray-700 mb-2">原因</label>
+            </label>
+            <label className="block text-sm">
+              原因
               <input
-                type="text"
                 value={newEntry.reason}
                 onChange={(e) => setNewEntry({ ...newEntry, reason: e.target.value })}
-                className="w-full border rounded-lg px-4 py-2"
+                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
                 placeholder="可选"
               />
-            </div>
+            </label>
           </div>
-          <div className="flex gap-2 mt-4">
-            <button
-              onClick={handleAdd}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              添加
-            </button>
-            <button
-              onClick={() => setShowAdd(false)}
-              className="bg-gray-200 px-4 py-2 rounded-lg hover:bg-gray-300"
-            >
+          <div className="mt-4 flex gap-2">
+            <Button onClick={handleAdd}>添加</Button>
+            <Button variant="secondary" onClick={() => setShowAdd(false)}>
               取消
-            </button>
+            </Button>
           </div>
-        </div>
+        </Panel>
       )}
 
-      <div className="bg-white rounded-lg shadow-md">
+      <Panel className="p-0">
         {loading ? (
-          <div className="p-8 text-center">加载中...</div>
+          <LoadingState />
+        ) : entries.length === 0 ? (
+          <div className="p-6">
+            <EmptyState message="暂无名单记录" />
+          </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">类型</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">目标</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">值</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">原因</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">创建时间</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {entries.map((entry) => (
-                <tr key={entry.id}>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      entry.type === 'whitelist' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {entry.type === 'whitelist' ? '白名单' : '黑名单'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">{entry.target}</td>
-                  <td className="px-6 py-4 font-mono">{entry.value}</td>
-                  <td className="px-6 py-4">{entry.reason || '-'}</td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {new Date(entry.created_at).toLocaleString()}
-                  </td>
-                  <td className="px-6 py-4">
-                    <button
-                      onClick={() => handleDelete(entry.id)}
-                      className="text-red-600 hover:underline"
-                    >
-                      删除
-                    </button>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[48rem] text-sm">
+              <thead className="bg-background text-left text-muted">
+                <tr>
+                  <th className="px-4 py-3">类型</th>
+                  <th className="px-4 py-3">目标</th>
+                  <th className="px-4 py-3">值</th>
+                  <th className="px-4 py-3">原因</th>
+                  <th className="px-4 py-3">创建时间</th>
+                  <th className="px-4 py-3">操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <Badge tone={entry.type === 'whitelist' ? 'success' : 'danger'}>
+                        {entry.type === 'whitelist' ? '白名单' : '黑名单'}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">{entry.target}</td>
+                    <td className="px-4 py-3 font-mono">{entry.value}</td>
+                    <td className="px-4 py-3">{entry.reason || '-'}</td>
+                    <td className="px-4 py-3 text-muted">
+                      {entry.created_at ? new Date(entry.created_at).toLocaleString() : '-'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button variant="ghost" onClick={() => handleDelete(entry.id)}>
+                        删除
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-
-        <div className="p-4 border-t flex justify-between items-center">
-          <div className="text-gray-500">共 {total} 条记录</div>
+        <div className="flex items-center justify-between border-t border-border p-4 text-sm">
+          <div className="text-muted">共 {total} 条记录</div>
           <div className="flex gap-2">
-            <button
-              onClick={() => setPage(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
+            <Button variant="secondary" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1}>
               上一页
-            </button>
-            <span className="px-3 py-1">{page}</span>
-            <button
-              onClick={() => setPage(page + 1)}
-              disabled={entries.length < 20}
-              className="px-3 py-1 border rounded disabled:opacity-50"
-            >
+            </Button>
+            <span className="px-3 py-2">{page}</span>
+            <Button variant="secondary" onClick={() => setPage(page + 1)} disabled={entries.length < 20}>
               下一页
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Panel>
     </div>
   )
 }

@@ -53,3 +53,21 @@ func TestPublishEvidenceCounters(t *testing.T) {
 		t.Fatalf("k3=%s", k3)
 	}
 }
+
+func TestPublishLinkEvidenceRequiresAbsoluteHTTPURL(t *testing.T) {
+	valid := CreateEventLinkEvidenceRequest{Title: "report", Description: "source", URL: "https://example.test/evidence"}
+	if err := valid.Validate(); err != nil {
+		t.Fatalf("valid link rejected: %v", err)
+	}
+	for _, raw := range []string{"", "/relative", "ftp://example.test/file"} {
+		if err := (CreateEventLinkEvidenceRequest{Title: "report", URL: raw}).Validate(); err == nil {
+			t.Fatalf("invalid link %q accepted", raw)
+		}
+	}
+	if err := (PublishLinkEvidenceRequest{EventIndex: 0, Title: "report", URL: "https://example.test/a"}).Validate(1); err != nil {
+		t.Fatalf("publish link rejected: %v", err)
+	}
+	if err := (PublishLinkEvidenceRequest{EventIndex: 3, Title: "report", URL: "https://example.test/a"}).Validate(1); err == nil {
+		t.Fatal("expected invalid publish link event index")
+	}
+}

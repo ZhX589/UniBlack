@@ -2,7 +2,14 @@
 
 import Link from 'next/link'
 import { useState, type FormEvent } from 'react'
+import { useAuth } from '@/app/providers'
 import { DemoCaptcha } from '@/components/auth/demo-captcha'
+import { apiRequest } from '@/lib/api'
+import { ApiError } from '@/lib/api-error'
+import { Alert } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Panel } from '@/components/ui/panel'
+import { LoadingState } from '@/components/ui/loading-state'
 
 type Account = { platform: string; username: string; account_id: string }
 type EventInput = {
@@ -10,13 +17,16 @@ type EventInput = {
   details: string
   severity: number
   text_evidence: string
+  link_url: string
+  link_title: string
   files: File[]
 }
 
 export default function SubmitPage() {
+  const { status, user } = useAuth()
   const [accounts, setAccounts] = useState<Account[]>([{ platform: 'qq', username: '', account_id: '' }])
   const [events, setEvents] = useState<EventInput[]>([
-    { title: '', details: '', severity: 1, text_evidence: '', files: [] },
+    { title: '', details: '', severity: 1, text_evidence: '', link_url: '', link_title: '', files: [] },
   ])
   const [displayName, setDisplayName] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
@@ -24,21 +34,22 @@ export default function SubmitPage() {
   const [error, setError] = useState('')
   const [result, setResult] = useState<{ public_id: string } | null>(null)
   const [loading, setLoading] = useState(false)
-  const token = typeof window === 'undefined' ? '' : localStorage.getItem('token') || ''
 
-  if (!token) {
+  if (status === 'loading') return <LoadingState message="正在确认登录状态..." />
+
+  if (status !== 'authenticated') {
     return (
       <main className="py-8">
         <h1 className="text-3xl font-bold">提交对象与事件</h1>
-        <p className="mt-3 text-gray-600">
-          登录并完成邮箱验证后可发布对象、账号和事件。提交后默认公开，错误或恶意内容可被申诉、修正、撤销，并可能导致提交权限处罚。
+        <p className="mt-3 text-muted">
+          登录并完成邮箱验证后可发布对象、账号和事件。提交后默认公开，错误或恶意内容可被申诉、修正、撤销。
         </p>
-        <div className="mt-6 rounded-lg border border-dashed bg-gray-50 p-6 text-gray-500">
-          <p>账号、事件、证据上传和发布操作在登录后可用。</p>
-          <Link href="/login?next=/submit" className="mt-4 inline-block rounded bg-gray-700 px-4 py-2 text-white">
-            登录后提交
+        <Panel className="mt-6 border-dashed">
+          <p className="text-muted">账号、事件、证据上传和发布操作在登录后可用。</p>
+          <Link href="/login?next=/submit" className="mt-4 inline-block">
+            <Button>登录后提交</Button>
           </Link>
-        </div>
+        </Panel>
       </main>
     )
   }
@@ -55,6 +66,15 @@ export default function SubmitPage() {
           text: event.text_evidence.trim(),
         }))
         .filter((item) => item.text.length > 0)
+
+      const linkEvidence = events
+        .map((event, event_index) => ({
+          event_index,
+          title: event.link_title.trim() || '链接证据',
+          description: '',
+          url: event.link_url.trim(),
+        }))
+        .filter((item) => item.url.length > 0)
 
       const fileEvidenceMeta: Array<{ event_index: number; title: string; filename: string; field: string }> = []
       const form = new FormData()
@@ -76,35 +96,48 @@ export default function SubmitPage() {
         accounts,
         events: events.map(({ title, details, severity }) => ({ title, details, severity })),
         text_evidence: textEvidence,
+        link_evidence: linkEvidence,
         file_evidence: fileEvidenceMeta,
         verification_code: verificationCode,
         captcha_token: captchaToken,
       }
 
-      let res: Response
+      let data: { public_id: string }
       if (fileEvidenceMeta.length > 0) {
         form.append('payload', JSON.stringify(payload))
-        res = await fetch('/api/subjects/publish', {
+        data = await apiRequest<{ public_id: string }>('/api/subjects/publish', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          auth: true,
           body: form,
         })
       } else {
-        res = await fetch('/api/subjects/publish', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify(payload),
+        data = await apiRequest<{ public_id: string }>('/api/subjects/publish', {
+          auth: true,
+          json: payload,
         })
       }
-
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok) {
-        setError(data.error || '发布失败')
-        return
-      }
       setResult(data)
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '发布失败')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function sendCode() {
+    try {
+      const email = user?.email
+      if (!email) {
+        setError('无法读取当前用户邮箱')
+        return
+      }
+      await apiRequest('/api/auth/send-verification-code', {
+        auth: true,
+        json: { email, purpose: 'submission' },
+      })
+      setError('')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : '发送验证码失败')
     }
   }
 
@@ -115,7 +148,7 @@ export default function SubmitPage() {
         <p className="mt-2">
           公开对象 ID：<code>{result.public_id}</code>
         </p>
-        <Link href={`/subjects/${result.public_id}`} className="mt-4 inline-block text-blue-600">
+        <Link href={`/subjects/${result.public_id}`} className="mt-4 inline-block text-primary hover:underline">
           查看对象档案
         </Link>
       </main>
@@ -125,142 +158,146 @@ export default function SubmitPage() {
   return (
     <main className="mx-auto max-w-3xl py-8">
       <h1 className="text-3xl font-bold">提交对象与事件</h1>
-      <p className="mt-2 text-gray-600">
-        分段填写对象、账号、事件、文本/文件证据与验证信息。文件与文本会在同一次发布请求中写入归档。开发环境邮箱验证码为 123456。
+      <p className="mt-2 text-muted">
+        分段填写对象、账号、事件、文本/链接/文件证据与验证信息。开发环境邮箱验证码为 123456。
       </p>
-      {error && <p className="mt-4 rounded bg-red-50 p-3 text-red-700">{error}</p>}
+      {error && (
+        <div className="mt-4">
+          <Alert>{error}</Alert>
+        </div>
+      )}
       <form onSubmit={publish} className="mt-6 space-y-6">
-        <section id="subject" className="rounded-lg bg-white p-5 shadow">
+        <Panel>
           <h2 className="font-semibold">1. 对象</h2>
+          <label htmlFor="display-name" className="mt-3 block text-sm">
+            通用名
+          </label>
           <input
-            className="mt-3 w-full rounded border p-2"
-            placeholder="通用名（留空时使用第一条账号用户名）"
+            id="display-name"
+            className="mt-1 min-h-touch w-full rounded border border-border p-2"
+            placeholder="留空时使用第一条账号用户名"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
           />
-        </section>
-        <section id="accounts" className="rounded-lg bg-white p-5 shadow">
+        </Panel>
+        <Panel>
           <h2 className="font-semibold">2. 账号</h2>
           {accounts.map((a, i) => (
-            <div className="mt-3 flex gap-2" key={i}>
+            <div className="mt-3 flex flex-col gap-2 md:flex-row" key={i}>
               <input
-                className="w-28 rounded border p-2"
+                className="min-h-touch rounded border border-border p-2 md:w-28"
                 value={a.platform}
                 onChange={(e) => setAccounts(accounts.map((x, j) => (j === i ? { ...x, platform: e.target.value } : x)))}
+                aria-label={`平台 ${i + 1}`}
               />
               <input
-                className="flex-1 rounded border p-2"
+                className="min-h-touch flex-1 rounded border border-border p-2"
                 placeholder="用户名"
                 value={a.username}
                 onChange={(e) => setAccounts(accounts.map((x, j) => (j === i ? { ...x, username: e.target.value } : x)))}
               />
               <input
-                className="flex-1 rounded border p-2"
+                className="min-h-touch flex-1 rounded border border-border p-2"
                 placeholder="账号 ID"
                 value={a.account_id}
                 onChange={(e) => setAccounts(accounts.map((x, j) => (j === i ? { ...x, account_id: e.target.value } : x)))}
               />
             </div>
           ))}
-          <button
+          <Button
             type="button"
-            className="mt-3 text-blue-600"
+            variant="ghost"
+            className="mt-3"
             onClick={() => setAccounts([...accounts, { platform: 'custom', username: '', account_id: '' }])}
           >
             添加账号
-          </button>
-        </section>
-        <section id="events" className="rounded-lg bg-white p-5 shadow">
+          </Button>
+        </Panel>
+        <Panel>
           <h2 className="font-semibold">3. 事件与证据</h2>
           {events.map((v, i) => (
-            <div className="mt-3 space-y-2 border-t pt-3 first:border-t-0 first:pt-0" key={i}>
+            <div className="mt-3 space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0" key={i}>
               <input
                 required
-                className="w-full rounded border p-2"
+                className="min-h-touch w-full rounded border border-border p-2"
                 placeholder="事件标题"
                 value={v.title}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
               />
               <textarea
                 required
-                className="w-full rounded border p-2"
+                className="w-full rounded border border-border p-2"
                 placeholder="事件详情"
                 value={v.details}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, details: e.target.value } : x)))}
               />
               <textarea
-                className="w-full rounded border p-2"
+                className="w-full rounded border border-border p-2"
                 placeholder="可选文本证据（保存为 .txt，最大 200KiB）"
                 value={v.text_evidence}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, text_evidence: e.target.value } : x)))}
               />
+              <div className="grid gap-2 md:grid-cols-2">
+                <input
+                  className="min-h-touch rounded border border-border p-2"
+                  placeholder="可选链接标题"
+                  value={v.link_title}
+                  onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, link_title: e.target.value } : x)))}
+                />
+                <input
+                  className="min-h-touch rounded border border-border p-2"
+                  placeholder="可选链接 URL (https://...)"
+                  value={v.link_url}
+                  onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, link_url: e.target.value } : x)))}
+                />
+              </div>
               <input
                 type="file"
                 multiple
                 className="block w-full text-sm"
                 onChange={(e) =>
                   setEvents(
-                    events.map((x, j) =>
-                      j === i ? { ...x, files: e.target.files ? Array.from(e.target.files) : [] } : x,
-                    ),
+                    events.map((x, j) => (j === i ? { ...x, files: e.target.files ? Array.from(e.target.files) : [] } : x)),
                   )
                 }
               />
-              {v.files.length > 0 && (
-                <p className="text-xs text-gray-500">已选 {v.files.length} 个文件，将随发布请求一并提交</p>
-              )}
+              {v.files.length > 0 && <p className="text-xs text-muted">已选 {v.files.length} 个文件</p>}
             </div>
           ))}
-          <button
+          <Button
             type="button"
-            className="mt-3 text-blue-600"
+            variant="ghost"
+            className="mt-3"
             onClick={() =>
-              setEvents([...events, { title: '', details: '', severity: 1, text_evidence: '', files: [] }])
+              setEvents([
+                ...events,
+                { title: '', details: '', severity: 1, text_evidence: '', link_url: '', link_title: '', files: [] },
+              ])
             }
           >
             添加事件
-          </button>
-        </section>
-        <section id="verification" className="rounded-lg bg-white p-5 shadow">
+          </Button>
+        </Panel>
+        <Panel>
           <h2 className="font-semibold">4. 验证与发布</h2>
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input
-              className="min-w-0 flex-1 rounded border p-2"
+              className="min-h-touch min-w-0 flex-1 rounded border border-border p-2"
               placeholder="邮箱验证码（开发环境 123456）"
               value={verificationCode}
               onChange={(e) => setVerificationCode(e.target.value)}
             />
-            <button
-              type="button"
-              className="rounded bg-gray-800 px-3 text-white"
-              onClick={async () => {
-                const profile = await fetch('/api/profile', { headers: { Authorization: `Bearer ${token}` } })
-                const data = await profile.json().catch(() => ({}))
-                const email = data.email
-                if (!email) return setError('无法读取当前用户邮箱')
-                const res = await fetch('/api/auth/send-verification-code', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                  body: JSON.stringify({ email, purpose: 'submission' }),
-                })
-                if (!res.ok) {
-                  const err = await res.json().catch(() => ({}))
-                  setError(err.error || '发送验证码失败')
-                  return
-                }
-                setError('')
-              }}
-            >
+            <Button type="button" variant="secondary" onClick={sendCode}>
               发送验证码
-            </button>
+            </Button>
           </div>
           <div className="mt-3">
-            <DemoCaptcha value={captchaToken} onChange={setCaptchaToken} purpose="submission" token={token} />
+            <DemoCaptcha value={captchaToken} onChange={setCaptchaToken} purpose="submission" />
           </div>
-          <button disabled={loading} className="mt-4 w-full rounded bg-red-700 p-2 text-white">
+          <Button type="submit" variant="danger" className="mt-4 w-full" disabled={loading}>
             {loading ? '发布中...' : '确认并公开发布'}
-          </button>
-        </section>
+          </Button>
+        </Panel>
       </form>
     </main>
   )

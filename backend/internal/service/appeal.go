@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	ErrAppealNotFound = errors.New("appeal not found")
+	ErrAppealNotFound = repository.ErrAppealNotFound
 )
 
 // AppealService handles appeal business logic
@@ -38,7 +38,9 @@ func NewAppealService(
 
 // CreateAppealRequest represents an appeal creation request
 type CreateAppealRequest struct {
-	CaseID string `json:"case_id" validate:"required"`
+	EventID string `json:"event_id"`
+	// CaseID is a legacy compatibility adapter. New clients must use EventID.
+	CaseID string `json:"case_id"`
 	Reason string `json:"reason" validate:"required"`
 }
 
@@ -55,22 +57,35 @@ type ResolveAppealRequest struct {
 
 // CreateAppeal creates a new appeal
 func (s *AppealService) CreateAppeal(ctx context.Context, req CreateAppealRequest, submittedBy string) (*models.Appeal, error) {
-	// Verify case exists
-	caseObj, err := s.caseRepo.GetCaseByID(ctx, req.CaseID)
-	if err != nil {
-		return nil, err
+	if (req.EventID == "") == (req.CaseID == "") {
+		return nil, errors.New("exactly one of event_id or legacy case_id is required")
 	}
-
-	// Only allow appeals on approved cases
-	if caseObj.Status != "approved" && caseObj.Status != "closed" {
-		return nil, errors.New("can only appeal approved or closed cases")
-	}
-
 	appeal := &models.Appeal{
-		CaseID:      req.CaseID,
 		Reason:      req.Reason,
 		Status:      "pending",
 		SubmittedBy: &submittedBy,
+	}
+	if req.EventID != "" {
+		if s.eventRepo == nil {
+			return nil, errors.New("event appeals unavailable")
+		}
+		event, err := s.eventRepo.GetByID(ctx, req.EventID)
+		if err != nil {
+			return nil, err
+		}
+		if event.Status != "published" && event.Status != "corrected" {
+			return nil, errors.New("can only appeal published events")
+		}
+		appeal.EventID = &req.EventID
+	} else {
+		caseObj, err := s.caseRepo.GetCaseByID(ctx, req.CaseID)
+		if err != nil {
+			return nil, err
+		}
+		if caseObj.Status != "approved" && caseObj.Status != "closed" {
+			return nil, errors.New("can only appeal approved or closed cases")
+		}
+		appeal.CaseID = &req.CaseID
 	}
 
 	if err := s.appealRepo.CreateAppeal(ctx, appeal); err != nil {
@@ -91,6 +106,11 @@ func (s *AppealService) GetAppeal(ctx context.Context, id string) (*models.Appea
 // GetAppealsByCaseID retrieves all appeals for a case
 func (s *AppealService) GetAppealsByCaseID(ctx context.Context, caseID string) ([]models.Appeal, error) {
 	return s.appealRepo.GetAppealsByCaseID(ctx, caseID)
+}
+
+// GetAppealsByEventID is the canonical Event-first history read.
+func (s *AppealService) GetAppealsByEventID(ctx context.Context, eventID string) ([]models.Appeal, error) {
+	return s.appealRepo.GetAppealsByEventID(ctx, eventID)
 }
 
 // ListAppeals lists appeals with pagination
@@ -119,9 +139,9 @@ func (s *AppealService) ReviewAppeal(ctx context.Context, id string, req ReviewA
 
 	// If appeal approved, update case status
 	if req.Status == "approved" {
-		s.caseRepo.UpdateCase(ctx, &models.Case{
-			ID: appeal.CaseID,
-		})
+		if appeal.CaseID != nil {
+			s.caseRepo.UpdateCase(ctx, &models.Case{ID: *appeal.CaseID})
+		}
 	}
 
 	// Create audit log
@@ -134,46 +154,19 @@ func (s *AppealService) ResolveAppeal(ctx context.Context, id string, req Resolv
 	if req.Outcome != "upheld" && req.Outcome != "corrected" && req.Outcome != "withdrawn" && req.Outcome != "malicious_submission" {
 		return nil, errors.New("invalid appeal outcome")
 	}
-	appeal, err := s.appealRepo.GetAppealByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
 	status := "rejected"
 	if req.Outcome == "corrected" || req.Outcome == "withdrawn" {
 		status = "approved"
 	}
-	if err := s.appealRepo.ResolveAppeal(ctx, id, reviewedBy, status, req.Outcome, req.Reason); err != nil {
+	if err := s.appealRepo.ResolveWithConsequences(ctx, id, reviewedBy, status, req.Outcome, req.Reason); err != nil {
 		return nil, err
 	}
-	if appeal.EventID != nil && s.eventRepo != nil {
-		switch req.Outcome {
-		case "corrected":
-			if err := s.eventRepo.UpdateStatus(ctx, *appeal.EventID, "corrected", req.Reason); err != nil {
-				return nil, err
-			}
-		case "withdrawn":
-			if err := s.eventRepo.UpdateStatus(ctx, *appeal.EventID, "withdrawn", req.Reason); err != nil {
-				return nil, err
-			}
-		}
-	} else if req.Outcome == "withdrawn" {
-		if err := s.caseRepo.ReviewCase(ctx, appeal.CaseID, reviewedBy, "closed", req.Reason); err != nil {
-			return nil, err
-		}
-	}
-	s.createAuditLog(ctx, reviewedBy, "resolve", "appeal", id, map[string]interface{}{"outcome": req.Outcome, "reason": req.Reason})
 	return s.appealRepo.GetAppealByID(ctx, id)
 }
 
-// DeleteAppeal deletes an appeal
+// DeleteAppeal retires an appeal from active reads and writes an audit row atomically.
 func (s *AppealService) DeleteAppeal(ctx context.Context, id, deletedBy string) error {
-	if err := s.appealRepo.DeleteAppeal(ctx, id); err != nil {
-		return err
-	}
-
-	s.createAuditLog(ctx, deletedBy, "delete", "appeal", id, nil)
-
-	return nil
+	return s.appealRepo.DeleteAppeal(ctx, id, deletedBy)
 }
 
 // createAuditLog creates an audit log entry

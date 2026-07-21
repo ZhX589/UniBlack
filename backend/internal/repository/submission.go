@@ -48,7 +48,7 @@ func (r *SubmissionRepository) ListSubmissions(ctx context.Context, offset, limi
 	var submissions []models.Submission
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Submission{})
+	query := r.db.WithContext(ctx).Model(&models.Submission{}).Where("deleted_at IS NULL")
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
@@ -74,15 +74,26 @@ func (r *SubmissionRepository) UpdateSubmission(ctx context.Context, submission 
 	return r.db.WithContext(ctx).Save(submission).Error
 }
 
-// DeleteSubmission deletes a submission
-func (r *SubmissionRepository) DeleteSubmission(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).
-		Where("id = ?", id).
-		Delete(&models.Submission{})
-	if result.RowsAffected == 0 {
-		return ErrSubmissionNotFound
-	}
-	return result.Error
+// DeleteSubmission preserves submission history and only hides it from active reads.
+// Retirement and the delete audit must commit together so active rows never hide without history.
+func (r *SubmissionRepository) DeleteSubmission(ctx context.Context, id, deletedBy string) error {
+	now := time.Now()
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&models.Submission{}).Where("id = ? AND deleted_at IS NULL", id).Update("deleted_at", now)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return ErrSubmissionNotFound
+		}
+		return tx.Create(&models.AuditLog{
+			UserID:       &deletedBy,
+			Action:       "delete",
+			ResourceType: "submission",
+			ResourceID:   &id,
+			Changes:      map[string]interface{}{"retired": true},
+		}).Error
+	})
 }
 
 // ReviewSubmission updates submission status after review

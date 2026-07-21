@@ -135,7 +135,7 @@ func (h *EventHandler) Get(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
 	}
-	if e.Status != "published" {
+	if e.Status != "published" && e.Status != "corrected" {
 		userID, _ := c.Get("user_id").(string)
 		roles, _ := c.Get("roles").([]string)
 		privileged := false

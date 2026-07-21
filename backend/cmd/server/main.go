@@ -2,71 +2,85 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/ZhX589/UniBlack/backend/internal/auth"
 	"github.com/ZhX589/UniBlack/backend/internal/captcha"
+	"github.com/ZhX589/UniBlack/backend/internal/config"
 	"github.com/ZhX589/UniBlack/backend/internal/db"
 	exporter "github.com/ZhX589/UniBlack/backend/internal/export"
 	"github.com/ZhX589/UniBlack/backend/internal/handler"
 	appMiddleware "github.com/ZhX589/UniBlack/backend/internal/middleware"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
-	"github.com/ZhX589/UniBlack/backend/internal/storage"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
 
+func registerPublicEventRoutes(group *echo.Group, getEvent, getCase echo.HandlerFunc) {
+	group.GET("/events/:id", getEvent)
+	group.GET("/cases/:id", getCase, appMiddleware.CaseDeprecation("/api/v1/events/:id"))
+}
+
+func registerLegacyCaseRoutes(group *echo.Group, create, list, get, update, deleteCase, history, evidence, appeals echo.HandlerFunc) *echo.Group {
+	legacyCases := group.Group("/cases")
+	legacyCases.POST("", create, appMiddleware.CaseDeprecation(""))
+	legacyCases.GET("", list, appMiddleware.CaseDeprecation(""))
+	legacyCases.GET("/:id", get, appMiddleware.CaseDeprecation("/api/events/:id"))
+	legacyCases.PUT("/:id", update, appMiddleware.CaseDeprecation(""))
+	legacyCases.DELETE("/:id", deleteCase, appMiddleware.CaseDeprecation(""))
+	legacyCases.GET("/:id/history", history, appMiddleware.CaseDeprecation(""))
+	legacyCases.GET("/:id/evidence", evidence, appMiddleware.CaseDeprecation(""))
+	legacyCases.GET("/:id/appeals", appeals, appMiddleware.CaseDeprecation(""))
+	return legacyCases
+}
+
+func registerAuthRoutes(group *echo.Group, limiter echo.MiddlewareFunc, register, login, refresh, sendVerificationCode, verifyEmail echo.HandlerFunc) {
+	group.Use(limiter)
+	group.POST("/register", register)
+	group.POST("/login", login)
+	group.POST("/refresh", refresh)
+	group.POST("/send-verification-code", sendVerificationCode)
+	group.POST("/verify-email", verifyEmail)
+}
+
 func main() {
+	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		log.Fatal(err)
+	}
+
 	e := echo.New()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
 
-	// Rate limiting
-	e.Use(middleware.RateLimiter(middleware.NewRateLimiterMemoryStore(20)))
-
-	// Connect to database
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		databaseURL = "postgres://postgres:postgres@localhost:5432/uniblack?sslmode=disable"
-	}
-
-	database, err := db.Connect(databaseURL)
+	// Connect to database and apply migrations before wiring any handlers.
+	database, err := db.Connect(cfg.DatabaseURL)
 	if err != nil {
-		log.Printf("Warning: Failed to connect to database: %v", err)
-	} else {
-		// Run migrations
-		if err := db.RunMigrations(database); err != nil {
-			log.Printf("Warning: Failed to run migrations: %v", err)
-		} else {
-			fmt.Println("Database connected and migrations applied")
-		}
+		log.Fatal(err)
 	}
+	if err := db.RunMigrations(database); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Database connected and migrations applied")
 
 	// Initialize JWT provider
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "dev-jwt-secret"
-	}
-	refreshSecret := os.Getenv("REFRESH_SECRET")
-	if refreshSecret == "" {
-		refreshSecret = "dev-refresh-secret"
-	}
-
 	jwtProvider := auth.NewJWTProvider(auth.JWTConfig{
-		Secret:        jwtSecret,
-		RefreshSecret: refreshSecret,
+		Secret:        cfg.JWTSecret,
+		RefreshSecret: cfg.RefreshSecret,
 		AccessTTL:     15 * time.Minute,
 		RefreshTTL:    7 * 24 * time.Hour,
 		Issuer:        "uniblack",
 	})
 
-	// Initialize storage
-	storageBackend := storage.NewLocalStorage("./uploads", "http://localhost:8080/uploads")
+	storageBackend, err := selectStorage(cfg, defaultStorageConstructors())
+	if err != nil {
+		log.Fatal(err)
+	}
 	demoCaptcha := captcha.DefaultDemo()
 
 	// Initialize repositories
@@ -86,22 +100,25 @@ func main() {
 	// Initialize services (settings first so OptionMap is ready for auth)
 	settingService := service.NewSystemSettingService(settingRepo, accessListRepo, auditRepo)
 	if err := settingService.Bootstrap(context.Background()); err != nil {
-		log.Printf("Warning: settings bootstrap: %v", err)
+		log.Fatal(err)
 	}
 	authService := service.NewAuthService(userRepo, settingService, accessListRepo, verifyRepo, jwtProvider)
 	subjectService := service.NewSubjectService(subjectRepo)
-	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo)
+	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo, storageBackend)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 	appealService := service.NewAppealService(appealRepo, caseRepo, eventRepo, auditRepo)
 	eventService := service.NewEventService(eventRepo, subjectRepo, sanctionRepo, userRepo, authService)
 	sanctionService := service.NewSanctionService(sanctionRepo, auditRepo)
 	archiveService := exporter.NewArchiveService(subjectRepo, eventRepo, evidenceRepo, storageBackend)
+	setupService := service.NewSetupService(repository.NewSetupRepository(database))
 
 	// Seed admin user in dev mode
-	if os.Getenv("GO_ENV") != "production" {
-		if err := authService.SeedAdmin(context.Background(), "admin123"); err != nil {
+	if cfg.Environment == "development" || cfg.Environment == "dev" {
+		if err := setupService.SeedDevelopmentAdmin(context.Background(), "admin123"); err != nil && !errors.Is(err, service.ErrAlreadyInitialized) {
 			log.Printf("Warning: Failed to seed admin: %v", err)
+		} else if err == nil {
+			settingService.ApplySetupCache("")
 		}
 	}
 
@@ -118,9 +135,15 @@ func main() {
 	archiveHandler := handler.NewArchiveHandler(archiveService)
 	settingHandler := handler.NewSystemSettingHandler(settingService)
 	userHandler := handler.NewUserManagementHandler(database)
-	setupHandler := handler.NewSetupHandler(authService, settingService)
+	setupHandler := handler.NewSetupHandler(setupService, settingService)
 	verificationHandler := handler.NewVerificationHandler(demoCaptcha)
 	publicHandler := handler.NewPublicAPIHandler(subjectService, caseService, evidenceService)
+
+	// Access checks are applied before all public routes. Protected routes add a
+	// second check after token authentication so email and username are available.
+	publicLimiter := appMiddleware.NewRequestRateLimiter(settingService, "security.rate_limit_public")
+	authLimiter := appMiddleware.NewRequestRateLimiter(settingService, "security.rate_limit_auth")
+	e.Use(appMiddleware.AccessList(settingService))
 
 	// Public routes
 	e.GET("/", func(c echo.Context) error {
@@ -129,36 +152,37 @@ func main() {
 
 	// Setup routes (public)
 	setupGroup := e.Group("/api/setup")
+	setupGroup.Use(publicLimiter.Middleware)
 	setupGroup.GET("/check", setupHandler.CheckSetup)
 	setupGroup.POST("/initialize", setupHandler.Initialize)
 
 	// Auth routes (public)
 	authGroup := e.Group("/api/auth")
-	authGroup.POST("/register", authHandler.Register)
-	authGroup.POST("/login", authHandler.Login)
-	authGroup.POST("/refresh", authHandler.RefreshToken)
-	authGroup.POST("/send-verification-code", authHandler.SendVerificationCode)
-	authGroup.POST("/verify-email", authHandler.VerifyEmail)
+	registerAuthRoutes(authGroup, authLimiter.Middleware, authHandler.Register, authHandler.Login, authHandler.RefreshToken, authHandler.SendVerificationCode, authHandler.VerifyEmail)
 	// Authenticated purpose-scoped codes (submission/appeal) share the same handler.
-	e.POST("/api/verification/demo/register", verificationHandler.IssueRegisterDemoToken)
+	e.POST("/api/verification/demo/register", verificationHandler.IssueRegisterDemoToken, publicLimiter.Middleware)
 
 	// Public settings
 	settingsPublicGroup := e.Group("/api/settings")
+	settingsPublicGroup.Use(publicLimiter.Middleware)
 	settingsPublicGroup.GET("/public", settingHandler.GetPublicSettings)
 
 	// Public API routes (no auth required)
 	publicGroup := e.Group("/api/v1")
+	publicGroup.Use(publicLimiter.Middleware)
 	publicGroup.GET("/search", publicHandler.SearchSubjects)
 	publicGroup.GET("/lookup", publicHandler.LookupSubject)
 	publicGroup.GET("/subjects", publicHandler.ListSubjects)
 	publicGroup.GET("/subjects/:id", publicHandler.GetSubject)
-	publicGroup.GET("/subjects/:id/cases", publicHandler.GetCasesBySubject)
-	publicGroup.GET("/cases/:id", publicHandler.GetCase)
+	registerPublicEventRoutes(publicGroup, eventHandler.Get, publicHandler.GetCase)
+	publicGroup.GET("/subjects/:id/cases", publicHandler.GetCasesBySubject, appMiddleware.CaseDeprecation("/api/v1/subjects/:id"))
 	publicGroup.GET("/statistics", publicHandler.GetStatistics)
 
 	// Protected routes
 	apiGroup := e.Group("/api")
 	apiGroup.Use(appMiddleware.AuthMiddleware(authService))
+	apiGroup.Use(appMiddleware.AccessList(settingService))
+	apiGroup.Use(authLimiter.Middleware)
 
 	// User routes
 	apiGroup.GET("/profile", authHandler.GetProfile)
@@ -175,7 +199,7 @@ func main() {
 	subjectGroup.GET("/:id", subjectHandler.GetSubject)
 	subjectGroup.PUT("/:id", subjectHandler.UpdateSubject)
 	subjectGroup.DELETE("/:id", subjectHandler.DeleteSubject)
-	subjectGroup.GET("/:id/cases", caseHandler.GetCasesBySubjectID)
+	subjectGroup.GET("/:id/cases", caseHandler.GetCasesBySubjectID, appMiddleware.CaseDeprecation("/api/subjects/:id"))
 
 	// Identifier routes (authenticated)
 	subjectGroup.POST("/:id/identifiers", subjectHandler.AddIdentifier)
@@ -183,13 +207,17 @@ func main() {
 	subjectGroup.DELETE("/identifiers/:id", subjectHandler.RemoveIdentifier)
 
 	// Case routes (authenticated)
-	caseGroup := apiGroup.Group("/cases")
-	caseGroup.POST("", caseHandler.CreateCase)
-	caseGroup.GET("", caseHandler.ListCases)
-	caseGroup.GET("/:id", caseHandler.GetCase)
-	caseGroup.PUT("/:id", caseHandler.UpdateCase)
-	caseGroup.DELETE("/:id", caseHandler.DeleteCase)
-	caseGroup.GET("/:id/history", caseHandler.GetCaseHistory)
+	caseGroup := registerLegacyCaseRoutes(
+		apiGroup,
+		caseHandler.CreateCase,
+		caseHandler.ListCases,
+		caseHandler.GetCase,
+		caseHandler.UpdateCase,
+		caseHandler.DeleteCase,
+		caseHandler.GetCaseHistory,
+		evidenceHandler.GetEvidenceByCaseID,
+		appealHandler.GetAppealsByCaseID,
+	)
 
 	// Evidence routes (authenticated)
 	evidenceGroup := apiGroup.Group("/evidence")
@@ -197,9 +225,6 @@ func main() {
 	evidenceGroup.POST("/upload", evidenceHandler.UploadEvidence)
 	evidenceGroup.GET("/:id", evidenceHandler.GetEvidence)
 	evidenceGroup.DELETE("/:id", evidenceHandler.DeleteEvidence)
-
-	// Case evidence routes
-	caseGroup.GET("/:id/evidence", evidenceHandler.GetEvidenceByCaseID)
 
 	// Submission routes (authenticated)
 	submissionGroup := apiGroup.Group("/submissions")
@@ -215,15 +240,17 @@ func main() {
 	appealGroup.GET("/:id", appealHandler.GetAppeal)
 	appealGroup.DELETE("/:id", appealHandler.DeleteAppeal)
 
-	// Case appeal routes
-	caseGroup.GET("/:id/appeals", appealHandler.GetAppealsByCaseID)
 	eventGroup := apiGroup.Group("/events")
 	eventGroup.GET("/:id", eventHandler.Get)
+	eventGroup.GET("/:id/appeals", appealHandler.GetAppealsByEventID)
+	eventGroup.POST("/:id/appeals", appealHandler.CreateAppeal)
 	eventGroup.POST("/:id/evidence/text", evidenceHandler.CreateEventTextEvidence)
+	eventGroup.POST("/:id/evidence/link", evidenceHandler.CreateEventLinkEvidence)
 	eventGroup.POST("/:id/evidence/file", evidenceHandler.CreateEventFileEvidence)
 
 	// Review routes (require moderator or admin)
 	reviewGroup := caseGroup.Group("/:id/review")
+	reviewGroup.Use(appMiddleware.CaseDeprecation(""))
 	reviewGroup.Use(appMiddleware.RequireRole("admin", "moderator"))
 	reviewGroup.POST("", caseHandler.ReviewCase)
 
@@ -273,10 +300,6 @@ func main() {
 	// Serve static files (uploads)
 	e.Static("/uploads", "./uploads")
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-	fmt.Printf("Server starting on port %s\n", port)
-	e.Logger.Fatal(e.Start(":" + port))
+	fmt.Printf("Server starting on port %s\n", cfg.Port)
+	e.Logger.Fatal(e.Start(":" + cfg.Port))
 }

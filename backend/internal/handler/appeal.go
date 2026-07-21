@@ -24,6 +24,9 @@ func (h *AppealHandler) CreateAppeal(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
+	if eventID := c.Param("id"); eventID != "" {
+		req.EventID = eventID
+	}
 
 	userID, _ := c.Get("user_id").(string)
 
@@ -59,6 +62,15 @@ func (h *AppealHandler) GetAppealsByCaseID(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	return c.JSON(http.StatusOK, appeals)
+}
+
+// GetAppealsByEventID returns the canonical Event-first appeal history.
+func (h *AppealHandler) GetAppealsByEventID(c echo.Context) error {
+	appeals, err := h.appealService.GetAppealsByEventID(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 	return c.JSON(http.StatusOK, appeals)
 }
 

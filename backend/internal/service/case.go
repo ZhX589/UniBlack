@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
-	"github.com/ZhX589/UniBlack/backend/internal/repository"
+	"github.com/ZhX589/UniBlack/backend/internal/storage"
 )
 
 var (
@@ -16,21 +16,43 @@ var (
 
 // CaseService handles case business logic
 type CaseService struct {
-	caseRepo    *repository.CaseRepository
-	subjectRepo *repository.SubjectRepository
-	auditRepo   *repository.AuditLogRepository
+	caseRepo    caseServiceRepository
+	subjectRepo caseSubjectRepository
+	auditRepo   caseAuditRepository
+	storage     storage.Storage
+}
+
+type caseServiceRepository interface {
+	CreateCase(context.Context, *models.Case) error
+	GetCaseByID(context.Context, string) (*models.Case, error)
+	ListCases(context.Context, int, int, string, string) ([]models.Case, int64, error)
+	UpdateCase(context.Context, *models.Case) error
+	DeleteCase(context.Context, string) error
+	ReviewCase(context.Context, string, string, string, string) error
+	GetCasesBySubjectID(context.Context, string) ([]models.Case, error)
+}
+
+type caseSubjectRepository interface {
+	GetSubjectByID(context.Context, string) (*models.Subject, error)
+}
+
+type caseAuditRepository interface {
+	CreateAuditLog(context.Context, *models.AuditLog) error
+	GetAuditLogsByResource(context.Context, string, string) ([]models.AuditLog, error)
 }
 
 // NewCaseService creates a new case service
 func NewCaseService(
-	caseRepo *repository.CaseRepository,
-	subjectRepo *repository.SubjectRepository,
-	auditRepo *repository.AuditLogRepository,
+	caseRepo caseServiceRepository,
+	subjectRepo caseSubjectRepository,
+	auditRepo caseAuditRepository,
+	storage storage.Storage,
 ) *CaseService {
 	return &CaseService{
 		caseRepo:    caseRepo,
 		subjectRepo: subjectRepo,
 		auditRepo:   auditRepo,
+		storage:     storage,
 	}
 }
 
@@ -140,6 +162,15 @@ func (s *CaseService) DeleteCase(ctx context.Context, id, deletedBy string) erro
 		return err
 	}
 
+	for _, evidence := range c.Evidences {
+		if evidence.StorageKey == nil {
+			continue
+		}
+		if err := s.storage.Delete(ctx, *evidence.StorageKey); err != nil {
+			return fmt.Errorf("delete stored evidence: %w", err)
+		}
+	}
+
 	if err := s.caseRepo.DeleteCase(ctx, id); err != nil {
 		return err
 	}
@@ -191,12 +222,12 @@ func (s *CaseService) createAuditLog(ctx context.Context, userID, action, resour
 	changes := make(map[string]interface{})
 	json.Unmarshal(changesJSON, &changes)
 
-	log := &models.AuditLog{
+	auditLog := &models.AuditLog{
 		UserID:       &userID,
 		Action:       action,
 		ResourceType: resourceType,
 		ResourceID:   &resourceID,
 		Changes:      changes,
 	}
-	s.auditRepo.CreateAuditLog(ctx, log)
+	s.auditRepo.CreateAuditLog(ctx, auditLog)
 }

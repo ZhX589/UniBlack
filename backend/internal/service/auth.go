@@ -20,20 +20,18 @@ import (
 )
 
 var (
-	ErrUserNotFound       = errors.New("user not found")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrUserInactive       = errors.New("user is inactive")
-	ErrRegistrationClosed = errors.New("registration is closed")
-	ErrInvalidCaptcha     = errors.New("invalid captcha")
-	ErrInvalidCode        = errors.New("invalid verification code")
-	ErrCaptchaNotReady    = errors.New("captcha enabled but secret not configured")
-	ErrSMTPRequired       = errors.New("smtp not configured")
+	ErrUserNotFound             = errors.New("user not found")
+	ErrInvalidCredentials       = errors.New("invalid credentials")
+	ErrUserInactive             = errors.New("user is inactive")
+	ErrRegistrationClosed       = errors.New("registration is closed")
+	ErrInvalidCaptcha           = errors.New("invalid captcha")
+	ErrInvalidCode              = errors.New("invalid verification code")
+	ErrCaptchaNotReady          = errors.New("captcha enabled but secret not configured")
+	ErrSMTPRequired             = errors.New("smtp not configured")
+	ErrAccessControlUnavailable = errors.New("access control unavailable")
 )
 
 func appEnv() string {
-	if v := os.Getenv("APP_ENV"); v != "" {
-		return strings.ToLower(v)
-	}
 	if v := os.Getenv("GO_ENV"); v != "" {
 		return strings.ToLower(v)
 	}
@@ -50,11 +48,15 @@ type SettingReader interface {
 	GetSettingValue(ctx context.Context, key string, dest interface{}) error
 }
 
+type AccessListReader interface {
+	IsListed(ctx context.Context, listType, target, value string) (bool, error)
+}
+
 // AuthService handles authentication logic
 type AuthService struct {
 	userRepo       *repository.UserRepository
 	settings       SettingReader
-	accessListRepo *repository.AccessListRepository
+	accessListRepo AccessListReader
 	verifyRepo     *repository.VerificationRepository
 	provider       auth.AuthProvider
 }
@@ -63,7 +65,7 @@ type AuthService struct {
 func NewAuthService(
 	userRepo *repository.UserRepository,
 	settings SettingReader,
-	accessListRepo *repository.AccessListRepository,
+	accessListRepo AccessListReader,
 	verifyRepo *repository.VerificationRepository,
 	provider auth.AuthProvider,
 ) *AuthService {
@@ -142,15 +144,27 @@ func (s *AuthService) Register(ctx context.Context, req RegisterRequest, ip stri
 		}
 	}
 
-	isBlacklisted, _ := s.accessListRepo.IsListed(ctx, "blacklist", "ip", ip)
+	if s.accessListRepo == nil {
+		return nil, ErrAccessControlUnavailable
+	}
+	isBlacklisted, err := s.accessListRepo.IsListed(ctx, "blacklist", "ip", ip)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAccessControlUnavailable, err)
+	}
 	if isBlacklisted {
 		return nil, fmt.Errorf("access denied")
 	}
-	isBlacklisted, _ = s.accessListRepo.IsListed(ctx, "blacklist", "email", req.Email)
+	isBlacklisted, err = s.accessListRepo.IsListed(ctx, "blacklist", "email", req.Email)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAccessControlUnavailable, err)
+	}
 	if isBlacklisted {
 		return nil, fmt.Errorf("email not allowed")
 	}
-	isBlacklisted, _ = s.accessListRepo.IsListed(ctx, "blacklist", "username", req.Username)
+	isBlacklisted, err = s.accessListRepo.IsListed(ctx, "blacklist", "username", req.Username)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrAccessControlUnavailable, err)
+	}
 	if isBlacklisted {
 		return nil, fmt.Errorf("username not allowed")
 	}

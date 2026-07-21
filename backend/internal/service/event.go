@@ -59,6 +59,15 @@ type PublishSubjectRequest struct {
 	CaptchaToken     string                       `json:"captcha_token"`
 	TextEvidence     []PublishTextEvidenceRequest `json:"text_evidence"`
 	FileEvidence     []PublishFileEvidenceRequest `json:"file_evidence"`
+	LinkEvidence     []PublishLinkEvidenceRequest `json:"link_evidence"`
+}
+
+// PublishLinkEvidenceRequest stores publisher-supplied link metadata only.
+type PublishLinkEvidenceRequest struct {
+	EventIndex  int    `json:"event_index"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	URL         string `json:"url"`
 }
 
 type PublishTextEvidenceRequest struct {
@@ -107,6 +116,13 @@ func (r PublishFileEvidenceRequest) Validate(eventCount int) error {
 		return fmt.Errorf("file extension not allowed: %s", ext)
 	}
 	return nil
+}
+
+func (r PublishLinkEvidenceRequest) Validate(eventCount int) error {
+	if r.EventIndex < 0 || r.EventIndex >= eventCount {
+		return errors.New("invalid evidence event index")
+	}
+	return domain.ValidateLinkEvidence(r.Title, r.URL)
 }
 
 // nextEvidenceKey assigns per-event T### / F### sequence numbers.
@@ -209,9 +225,10 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		}
 		events = append(events, models.Event{Title: e.Title, Details: e.Details, Severity: severity, Status: "published", OccurredFrom: e.OccurredFrom, OccurredTo: e.OccurredTo, SubmittedBy: &userID})
 	}
-	// Store text/file blobs first. DB metadata is inserted in the same
-	// transaction as subject/accounts/events; failed DB writes compensate storage.
-	evidence := make([]repository.EventEvidence, 0, len(req.TextEvidence)+len(req.FileEvidence))
+	// Store text/file blobs first. Link evidence is metadata-only.
+	// DB metadata is inserted in the same transaction as subject/accounts/events;
+	// failed DB writes compensate storage.
+	evidence := make([]repository.EventEvidence, 0, len(req.TextEvidence)+len(req.FileEvidence)+len(req.LinkEvidence))
 	keys := make([]string, 0, len(req.TextEvidence)+len(req.FileEvidence))
 	textN := make([]int, len(events))
 	fileN := make([]int, len(events))
@@ -219,6 +236,19 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		for _, key := range keys {
 			_ = s.events.DeleteStored(ctx, key)
 		}
+	}
+
+	for _, item := range req.LinkEvidence {
+		if err := item.Validate(len(events)); err != nil {
+			return nil, err
+		}
+		title := item.Title
+		description := item.Description
+		linkURL := item.URL
+		evidence = append(evidence, repository.EventEvidence{
+			EventIndex: item.EventIndex,
+			Evidence:   models.Evidence{Type: "link", Title: &title, Description: &description, URL: &linkURL, UploadedBy: &userID},
+		})
 	}
 
 	for _, item := range req.TextEvidence {
