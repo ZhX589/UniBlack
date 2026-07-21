@@ -157,3 +157,14 @@
 | Case 兼容收束检查清单 | 文档完成（非立即删表） | `docs/product-decisions.md` Sunset checklist |
 | 后端 `go test ./...` | 通过 | 本分支验证 |
 | 前端 unit / lint / typecheck | 通过 | Vitest 10/10、eslint clean |
+
+## 2026-07-21 可选后续（`feature/post-merge-followups`）
+
+| 项 | 状态 |
+| --- | --- |
+| 清理 `.worktrees/next-development` + 本地 `feature/next-development` | 已删除 |
+| README Event-first API 表 + 遗留 Case 标注 | 已更新 |
+| Sunset 检查清单细化（已完成/待办分栏） | `docs/product-decisions.md` |
+| Playwright：事件申诉队列 + Case 软跳转 | `e2e/appeals-and-compat.spec.ts` + navigation 扩展 |
+| OAuth / 暗色 / OpenAPI / API Key | **明确不做**（决策锁定） |
+| Case 表物理删除 | **禁止直至 Sunset 检查清单完成** |
