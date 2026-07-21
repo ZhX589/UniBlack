@@ -7,6 +7,7 @@ import (
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -79,12 +80,23 @@ func (r *SubjectRepository) AccountConflicts(ctx context.Context, accounts []mod
 
 // GetSubjectByIdentifier retrieves a subject by platform and value
 func (r *SubjectRepository) GetSubjectByIdentifier(ctx context.Context, platform, value string) (*models.Subject, error) {
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	value = strings.ToLower(strings.TrimSpace(value))
 	var subject models.Subject
 	err := r.db.WithContext(ctx).
 		Preload("Identifiers").
-		Joins("JOIN identifiers ON identifiers.subject_id = subjects.id").
-		Where("identifiers.platform = ? AND identifiers.value = ?", platform, value).
+		Preload("Accounts").
+		Joins("JOIN accounts ON accounts.subject_id = subjects.id").
+		Where("subjects.status = 'active' AND lower(btrim(accounts.platform)) = ? AND (lower(btrim(accounts.username)) = ? OR lower(btrim(accounts.account_id)) = ?)", platform, value, value).
 		First(&subject).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = r.db.WithContext(ctx).
+			Preload("Identifiers").
+			Preload("Accounts").
+			Joins("JOIN identifiers ON identifiers.subject_id = subjects.id").
+			Where("subjects.status = 'active' AND lower(btrim(identifiers.platform)) = ? AND lower(btrim(identifiers.value)) = ?", platform, value).
+			First(&subject).Error
+	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSubjectNotFound
@@ -188,13 +200,29 @@ func (r *SubjectRepository) GetIdentifiersBySubjectID(ctx context.Context, subje
 // SearchSubjects searches subjects by identifier value
 func (r *SubjectRepository) SearchSubjects(ctx context.Context, query string) ([]models.Subject, error) {
 	var subjects []models.Subject
+	pattern := "%" + query + "%"
 	err := r.db.WithContext(ctx).
 		Preload("Identifiers").
+		Preload("Accounts").
+		Joins("LEFT JOIN accounts ON accounts.subject_id = subjects.id").
 		Joins("LEFT JOIN identifiers ON identifiers.subject_id = subjects.id").
-		Where("subjects.display_name ILIKE ? OR identifiers.value ILIKE ?",
-			"%"+query+"%", "%"+query+"%").
+		Where("subjects.status = 'active' AND (subjects.display_name ILIKE ? OR accounts.username ILIKE ? OR accounts.account_id ILIKE ? OR identifiers.value ILIKE ?)", pattern, pattern, pattern, pattern).
 		Group("subjects.id").
+		Order(clause.Expr{SQL: "COALESCE(bool_or(accounts.username ILIKE ? OR accounts.account_id ILIKE ?), false) DESC, subjects.created_at DESC", Vars: []interface{}{pattern, pattern}}).
 		Limit(50).
 		Find(&subjects).Error
 	return subjects, err
+}
+
+// PublicStatistics is intentionally Event-first; legacy CaseCount is not a public metric.
+// Event counts include published and corrected public records.
+func (r *SubjectRepository) PublicStatistics(ctx context.Context) (int64, int64, error) {
+	var subjects, events int64
+	if err := r.db.WithContext(ctx).Model(&models.Subject{}).Where("status = 'active'").Count(&subjects).Error; err != nil {
+		return 0, 0, err
+	}
+	if err := r.db.WithContext(ctx).Model(&models.Event{}).Where("status IN ?", []string{"published", "corrected"}).Count(&events).Error; err != nil {
+		return 0, 0, err
+	}
+	return subjects, events, nil
 }

@@ -132,6 +132,28 @@ func (h *EvidenceHandler) CreateEventTextEvidence(c echo.Context) error {
 	return c.JSON(http.StatusCreated, evidence)
 }
 
+// CreateEventLinkEvidence records link metadata without fetching the remote URL.
+func (h *EvidenceHandler) CreateEventLinkEvidence(c echo.Context) error {
+	if h.eventService == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "event evidence unavailable"})
+	}
+	var req service.CreateEventLinkEvidenceRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	eventID := c.Param("id")
+	userID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
+	if _, err := h.eventService.CanManageEvent(c.Request().Context(), eventID, userID, roles); err != nil {
+		return c.JSON(http.StatusForbidden, map[string]string{"error": err.Error()})
+	}
+	evidence, err := h.evidenceService.CreateEventLinkEvidence(c.Request().Context(), eventID, req, userID)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, evidence)
+}
+
 // CreateEventFileEvidence attaches a binary file under the subject archive namespace.
 func (h *EvidenceHandler) CreateEventFileEvidence(c echo.Context) error {
 	if h.eventService == nil {

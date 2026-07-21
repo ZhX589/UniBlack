@@ -48,9 +48,9 @@ func (h *PublicAPIHandler) SearchSubjects(c echo.Context) error {
 			"public_id":    s.PublicID,
 			"display_name": s.DisplayName,
 			"risk_level":   s.RiskLevel,
-			"case_count":   s.CaseCount,
 			"status":       s.Status,
 			"identifiers":  s.Identifiers,
+			"accounts":     s.Accounts,
 		})
 	}
 
@@ -82,9 +82,9 @@ func (h *PublicAPIHandler) LookupSubject(c echo.Context) error {
 		"public_id":    subject.PublicID,
 		"display_name": subject.DisplayName,
 		"risk_level":   subject.RiskLevel,
-		"case_count":   subject.CaseCount,
 		"status":       subject.Status,
 		"identifiers":  subject.Identifiers,
+		"accounts":     subject.Accounts,
 	})
 }
 
@@ -105,7 +105,6 @@ func (h *PublicAPIHandler) GetSubject(c echo.Context) error {
 		"public_id":    subject.PublicID,
 		"display_name": subject.DisplayName,
 		"risk_level":   subject.RiskLevel,
-		"case_count":   subject.CaseCount,
 		"status":       subject.Status,
 		"identifiers":  subject.Identifiers,
 		"accounts":     subject.Accounts,
@@ -174,12 +173,13 @@ func (h *PublicAPIHandler) GetCasesBySubject(c echo.Context) error {
 
 // GetStatistics gets system statistics (public)
 func (h *PublicAPIHandler) GetStatistics(c echo.Context) error {
-	// This would typically query the database for counts
-	// For now, return placeholder
+	subjects, events, err := h.subjectService.PublicStatistics(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"subjects": 0,
-		"cases":    0,
-		"pending":  0,
+		"events":   events,
+		"subjects": subjects,
 	})
 }
 
@@ -201,8 +201,8 @@ func (h *PublicAPIHandler) ListSubjects(c echo.Context) error {
 			"public_id":    s.PublicID,
 			"display_name": s.DisplayName,
 			"risk_level":   s.RiskLevel,
-			"case_count":   s.CaseCount,
 			"status":       s.Status,
+			"accounts":     s.Accounts,
 		})
 	}
 

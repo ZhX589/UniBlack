@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
@@ -43,15 +42,13 @@ func NewSystemSettingService(
 func (s *SystemSettingService) Bootstrap(ctx context.Context) error {
 	raw, err := s.settingRepo.LoadRawMap(ctx)
 	if err != nil {
-		log.Printf("Warning: load settings from DB: %v", err)
-		raw = map[string]string{}
+		return err
 	}
 	// Ensure every catalog/default key has a DB row (migration may be older)
 	for k, v := range setting.DefaultMap() {
 		if _, ok := raw[k]; !ok {
 			if err := s.settingRepo.SetRawJSON(ctx, k, v, descFor(k), nil); err != nil {
-				log.Printf("Warning: seed setting %s: %v", k, err)
-				continue
+				return err
 			}
 			raw[k] = v
 		}
@@ -257,6 +254,16 @@ func (s *SystemSettingService) InitializeSystem(ctx context.Context, _ string) e
 	return s.UpdateSettings(ctx, []UpdateSettingRequest{
 		{Key: setting.KeySystemInitialized, Value: true},
 	}, "system")
+}
+
+// ApplySetupCache reflects a successful transactional setup without issuing a
+// second persistence operation outside that transaction.
+func (s *SystemSettingService) ApplySetupCache(siteName string) {
+	s.cache.Set(setting.KeySystemInitialized, "true")
+	if siteName != "" {
+		value, _ := json.Marshal(siteName)
+		s.cache.Set(setting.KeySiteName, string(value))
+	}
 }
 
 // AccessList methods

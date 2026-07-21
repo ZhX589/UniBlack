@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ZhX589/UniBlack/backend/internal/service"
@@ -9,14 +10,14 @@ import (
 
 // SetupHandler handles system setup requests
 type SetupHandler struct {
-	authService    *service.AuthService
+	setupService   *service.SetupService
 	settingService *service.SystemSettingService
 }
 
 // NewSetupHandler creates a new setup handler
-func NewSetupHandler(authService *service.AuthService, settingService *service.SystemSettingService) *SetupHandler {
+func NewSetupHandler(setupService *service.SetupService, settingService *service.SystemSettingService) *SetupHandler {
 	return &SetupHandler{
-		authService:    authService,
+		setupService:   setupService,
 		settingService: settingService,
 	}
 }
@@ -35,33 +36,18 @@ type InitializeRequest struct {
 
 // Initialize initializes the system
 func (h *SetupHandler) Initialize(c echo.Context) error {
-	// Check if already initialized
-	if h.settingService.IsInitialized(c.Request().Context()) {
-		return c.JSON(http.StatusConflict, map[string]string{"error": "system already initialized"})
-	}
-
 	var req InitializeRequest
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	// Create admin user
-	if err := h.authService.SeedAdmin(c.Request().Context(), req.AdminPassword); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create admin"})
-	}
-
-	// Update site name if provided
-	if req.SiteName != "" {
-		siteName := req.SiteName
-		h.settingService.UpdateSettings(c.Request().Context(), []service.UpdateSettingRequest{
-			{Key: "site.name", Value: siteName},
-		}, "system")
-	}
-
-	// Mark system as initialized
-	if err := h.settingService.InitializeSystem(c.Request().Context(), req.AdminPassword); err != nil {
+	if err := h.setupService.Initialize(c.Request().Context(), req.AdminPassword, req.SiteName); err != nil {
+		if errors.Is(err, service.ErrAlreadyInitialized) {
+			return c.JSON(http.StatusConflict, map[string]string{"error": "system already initialized"})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to initialize"})
 	}
+	h.settingService.ApplySetupCache(req.SiteName)
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "system initialized successfully"})
 }

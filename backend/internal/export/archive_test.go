@@ -91,3 +91,107 @@ func TestValidateEvidenceNameNamespace(t *testing.T) {
 		t.Fatal("expected foreign namespace rejection")
 	}
 }
+
+func TestReadArchivePreservesLinkMetadataWithoutArchiveBody(t *testing.T) {
+	manifest := Manifest{SchemaVersion: 1, PublicID: "UBS_01ABCDEFGHJKMNPQRSTVWXYZ", DisplayName: "t", Events: []EventManifest{{Title: "e", Details: "d", Status: "published", Evidence: []EvidenceManifest{{Type: "link", Title: "report", Description: "original report", URL: "https://example.test/report"}}}}}
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(raw); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, files, err := readArchive(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := got.Events[0].Evidence[0]
+	if link.Title != "report" || link.Description != "original report" || link.URL != "https://example.test/report" {
+		t.Fatalf("link metadata changed: %#v", link)
+	}
+	if link.SHA256 != "" || link.FileName != "" {
+		t.Fatalf("link retained body metadata: %#v", link)
+	}
+	if len(files) != 1 {
+		t.Fatalf("link created unexpected archive body: %v", files)
+	}
+}
+
+func TestReadArchiveRejectsLinkBodyMetadataAndUnreferencedFiles(t *testing.T) {
+	base := Manifest{
+		SchemaVersion: 1,
+		PublicID:      "UBS_01ABCDEFGHJKMNPQRSTVWXYZ",
+		DisplayName:   "t",
+		Events: []EventManifest{{
+			Title:   "e",
+			Details: "d",
+			Status:  "published",
+			Evidence: []EvidenceManifest{{
+				Type:  "link",
+				Title: "report",
+				URL:   "https://example.test/report",
+			}},
+		}},
+	}
+
+	withHash := base
+	withHash.Events = append([]EventManifest(nil), base.Events...)
+	withHash.Events[0].Evidence = append([]EvidenceManifest(nil), base.Events[0].Evidence...)
+	withHash.Events[0].Evidence[0].SHA256 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if _, _, err := readArchive(mustZip(t, withHash, nil)); err == nil {
+		t.Fatal("expected link hash rejection")
+	}
+
+	if _, _, err := readArchive(mustZip(t, base, map[string][]byte{
+		"subjects/UBS_01ABCDEFGHJKMNPQRSTVWXYZ/evidence/orphan.bin": []byte("x"),
+	})); err == nil {
+		t.Fatal("expected unreferenced body rejection")
+	}
+
+	invalidURL := base
+	invalidURL.Events = append([]EventManifest(nil), base.Events...)
+	invalidURL.Events[0].Evidence = append([]EvidenceManifest(nil), base.Events[0].Evidence...)
+	invalidURL.Events[0].Evidence[0].URL = "https://"
+	if _, _, err := readArchive(mustZip(t, invalidURL, nil)); err == nil {
+		t.Fatal("expected invalid link URL rejection")
+	}
+}
+
+func mustZip(t *testing.T, manifest Manifest, extras map[string][]byte) *bytes.Buffer {
+	t.Helper()
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, err := zw.Create("manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write(raw); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range extras {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(content); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return &buf
+}

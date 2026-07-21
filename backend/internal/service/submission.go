@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
@@ -11,7 +10,7 @@ import (
 )
 
 var (
-	ErrSubmissionNotFound = errors.New("submission not found")
+	ErrSubmissionNotFound = repository.ErrSubmissionNotFound
 )
 
 // SubmissionService handles submission business logic
@@ -147,15 +146,9 @@ func (s *SubmissionService) ReviewSubmission(ctx context.Context, id string, req
 	return s.submissionRepo.GetSubmissionByID(ctx, id)
 }
 
-// DeleteSubmission deletes a submission
+// DeleteSubmission retires a submission from active reads and writes an audit row atomically.
 func (s *SubmissionService) DeleteSubmission(ctx context.Context, id, deletedBy string) error {
-	if err := s.submissionRepo.DeleteSubmission(ctx, id); err != nil {
-		return err
-	}
-
-	s.createAuditLog(ctx, deletedBy, "delete", "submission", id, nil)
-
-	return nil
+	return s.submissionRepo.DeleteSubmission(ctx, id, deletedBy)
 }
 
 // createAuditLog creates an audit log entry

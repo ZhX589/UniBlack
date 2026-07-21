@@ -8,12 +8,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"path/filepath"
 	"time"
 	"unicode/utf8"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
-	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
 )
 
@@ -35,15 +36,27 @@ func validateTextEvidence(text string) error {
 
 // EvidenceService handles evidence business logic
 type EvidenceService struct {
-	evidenceRepo *repository.EvidenceRepository
-	caseRepo     *repository.CaseRepository
+	evidenceRepo evidenceRepository
+	caseRepo     caseRepository
 	storage      storage.Storage
+}
+
+type evidenceRepository interface {
+	CreateEvidence(context.Context, *models.Evidence) error
+	GetEvidenceByID(context.Context, string) (*models.Evidence, error)
+	GetEvidenceByCaseID(context.Context, string) ([]models.Evidence, error)
+	GetEvidenceBySHA256(context.Context, string) (*models.Evidence, error)
+	DeleteEvidence(context.Context, string) error
+}
+
+type caseRepository interface {
+	GetCaseByID(context.Context, string) (*models.Case, error)
 }
 
 // NewEvidenceService creates a new evidence service
 func NewEvidenceService(
-	evidenceRepo *repository.EvidenceRepository,
-	caseRepo *repository.CaseRepository,
+	evidenceRepo evidenceRepository,
+	caseRepo caseRepository,
 	storage storage.Storage,
 ) *EvidenceService {
 	return &EvidenceService{
@@ -67,6 +80,28 @@ type UploadEvidenceRequest struct {
 	CaseID      string `json:"case_id" validate:"required"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
+}
+
+// CreateEventLinkEvidenceRequest stores publisher-supplied link metadata only.
+type CreateEventLinkEvidenceRequest struct {
+	Title       string `json:"title" validate:"required"`
+	Description string `json:"description"`
+	URL         string `json:"url" validate:"required"`
+}
+
+func (r CreateEventLinkEvidenceRequest) Validate() error {
+	return domain.ValidateLinkEvidence(r.Title, r.URL)
+}
+
+func (s *EvidenceService) CreateEventLinkEvidence(ctx context.Context, eventID string, req CreateEventLinkEvidenceRequest, uploadedBy string) (*models.Evidence, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
+	}
+	evidence := &models.Evidence{EventID: &eventID, Type: "link", Title: &req.Title, Description: &req.Description, URL: &req.URL, UploadedBy: &uploadedBy}
+	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
+		return nil, err
+	}
+	return evidence, nil
 }
 
 // CreateEvidence creates a new evidence entry (for links and text)
@@ -121,7 +156,9 @@ func (s *EvidenceService) CreateEventTextEvidence(ctx context.Context, eventID, 
 		UploadedBy:       &uploadedBy,
 	}
 	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
-		_ = s.storage.Delete(ctx, key)
+		if cleanupErr := s.storage.Delete(ctx, key); cleanupErr != nil {
+			log.Printf("cleanup text evidence object after metadata failure: %v", cleanupErr)
+		}
 		return nil, err
 	}
 	return evidence, nil
@@ -154,7 +191,9 @@ func (s *EvidenceService) CreateEventFileEvidence(ctx context.Context, eventID, 
 		UploadedBy:       &uploadedBy,
 	}
 	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
-		_ = s.storage.Delete(ctx, key)
+		if cleanupErr := s.storage.Delete(ctx, key); cleanupErr != nil {
+			log.Printf("cleanup file evidence object after metadata failure: %v", cleanupErr)
+		}
 		return nil, err
 	}
 	return evidence, nil
@@ -187,6 +226,9 @@ func (s *EvidenceService) UploadEvidence(ctx context.Context, req UploadEvidence
 	// Check for duplicate
 	existing, _ := s.evidenceRepo.GetEvidenceBySHA256(ctx, sha256Hash)
 	if existing != nil {
+		if cleanupErr := s.storage.Delete(ctx, key); cleanupErr != nil {
+			log.Printf("cleanup duplicate evidence object: %v", cleanupErr)
+		}
 		return existing, nil
 	}
 
@@ -197,6 +239,7 @@ func (s *EvidenceService) UploadEvidence(ctx context.Context, req UploadEvidence
 		Title:       &req.Title,
 		Description: &req.Description,
 		URL:         &url,
+		StorageKey:  &key,
 		FileSize:    &fileSize,
 		SHA256:      &sha256Hash,
 		MimeType:    &ext,
@@ -204,6 +247,9 @@ func (s *EvidenceService) UploadEvidence(ctx context.Context, req UploadEvidence
 	}
 
 	if err := s.evidenceRepo.CreateEvidence(ctx, evidence); err != nil {
+		if cleanupErr := s.storage.Delete(ctx, key); cleanupErr != nil {
+			log.Printf("cleanup evidence object after metadata failure: %v", cleanupErr)
+		}
 		return nil, err
 	}
 
@@ -220,16 +266,16 @@ func (s *EvidenceService) GetEvidenceByCaseID(ctx context.Context, caseID string
 	return s.evidenceRepo.GetEvidenceByCaseID(ctx, caseID)
 }
 
-// DeleteEvidence deletes evidence
+// DeleteEvidence deletes evidence.
 func (s *EvidenceService) DeleteEvidence(ctx context.Context, id string) error {
 	evidence, err := s.evidenceRepo.GetEvidenceByID(ctx, id)
 	if err != nil {
 		return err
 	}
-
-	// Delete from storage if it's a file
-	if evidence.URL != nil && evidence.Type == "file" {
-		s.storage.Delete(ctx, *evidence.URL)
+	if evidence.StorageKey != nil {
+		if err := s.storage.Delete(ctx, *evidence.StorageKey); err != nil {
+			return fmt.Errorf("delete stored evidence: %w", err)
+		}
 	}
 
 	return s.evidenceRepo.DeleteEvidence(ctx, id)

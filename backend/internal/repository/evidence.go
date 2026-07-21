@@ -59,7 +59,7 @@ func (r *EvidenceRepository) GetEvidenceByEventID(ctx context.Context, eventID s
 	return evidences, err
 }
 
-// DeleteEvidence deletes evidence
+// DeleteEvidence deletes evidence.
 func (r *EvidenceRepository) DeleteEvidence(ctx context.Context, id string) error {
 	result := r.db.WithContext(ctx).
 		Where("id = ?", id).

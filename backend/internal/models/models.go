@@ -181,12 +181,13 @@ type Submission struct {
 	ReviewedAt         *time.Time `json:"reviewed_at,omitempty"`
 	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt          *time.Time `gorm:"index" json:"-"`
 }
 
 // Appeal represents an appeal against a case
 type Appeal struct {
 	ID               string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	CaseID           string     `gorm:"type:uuid;not null" json:"case_id"`
+	CaseID           *string    `gorm:"type:uuid" json:"case_id,omitempty"`
 	EventID          *string    `gorm:"type:uuid;index" json:"event_id,omitempty"`
 	Reason           string     `gorm:"type:text;not null" json:"reason"`
 	Status           string     `gorm:"type:varchar(20);default:'pending'" json:"status"`
@@ -198,6 +199,7 @@ type Appeal struct {
 	ReviewedAt       *time.Time `json:"reviewed_at,omitempty"`
 	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt        time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	DeletedAt        *time.Time `gorm:"index" json:"-"`
 }
 
 // Sanction records an administrator's proportional restriction on a submitter.
@@ -242,7 +244,7 @@ type AuditLog struct {
 	Action       string                 `gorm:"type:varchar(50);not null" json:"action"`
 	ResourceType string                 `gorm:"type:varchar(50);not null" json:"resource_type"`
 	ResourceID   *string                `gorm:"type:uuid" json:"resource_id,omitempty"`
-	Changes      map[string]interface{} `gorm:"type:jsonb" json:"changes,omitempty"`
+	Changes      map[string]interface{} `gorm:"type:jsonb;serializer:json" json:"changes,omitempty"`
 	IPAddress    *string                `gorm:"type:inet" json:"ip_address,omitempty"`
 	UserAgent    *string                `gorm:"type:text" json:"user_agent,omitempty"`
 	CreatedAt    time.Time              `gorm:"autoCreateTime" json:"created_at"`
