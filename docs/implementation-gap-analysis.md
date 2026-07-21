@@ -131,11 +131,15 @@
 | 页面级 token/fetch 清零 | `d33fc98`：全站页面不再直连 `localStorage` token / 页面 `fetch`（仅 `providers` 持 token） |
 | Playwright 角色/视口 | `E2E_ALLOW_DEFAULT_USERS=1 npm run test:e2e` → **21 passed**（desktop/tablet/mobile，系统 Chrome channel） |
 
-### 当前剩余差距
+### 当前剩余差距 / 环境阻塞
 
 ```text
-生产 Compose/Nginx 同源 smoke：本机 Docker daemon 不可用（docker info 失败），按收尾计划记为环境阻塞
+生产 Compose/Nginx 同源 smoke：本机用户无 docker.sock 权限
+  证据：docker info → permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
+  用户组：ZhX input wheel（无 docker 组）；需 root 将用户加入 docker 组或 sudo 后重跑
 旧 Submission 审核 UI 仍处兼容窗口（有意保留至 Sunset，非功能回归）
+本地 API smoke（非 Docker）：GET /api/settings/public 200；GET /api/v1/statistics 200；
+  POST /api/auth/login admin/testuser 200 + access_token
 ```
 
 ### 计划文档
