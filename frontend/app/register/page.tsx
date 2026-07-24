@@ -9,6 +9,7 @@ import { settingBool } from '@/lib/settings'
 import type { PublicSettings } from '@/lib/types'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
 
@@ -108,9 +109,8 @@ export default function RegisterPage() {
         <form onSubmit={submit} className="space-y-4">
           <label className="block text-sm">
             用户名
-            <input
+            <Input
               required
-              className="mt-1 min-h-touch w-full rounded border border-border p-2"
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
             />
@@ -118,10 +118,9 @@ export default function RegisterPage() {
           <div className="flex gap-2">
             <label className="block min-w-0 flex-1 text-sm">
               邮箱
-              <input
+              <Input
                 required
                 type="email"
-                className="mt-1 min-h-touch w-full rounded border border-border p-2"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
@@ -135,9 +134,8 @@ export default function RegisterPage() {
           {emailVerification && (
             <label className="block text-sm">
               验证码（开发环境为 123456）
-              <input
+              <Input
                 required
-                className="mt-1 min-h-touch w-full rounded border border-border p-2"
                 value={form.verificationCode}
                 onChange={(e) => setForm({ ...form, verificationCode: e.target.value })}
               />
@@ -145,22 +143,20 @@ export default function RegisterPage() {
           )}
           <label className="block text-sm">
             密码
-            <input
+            <Input
               required
               type="password"
               minLength={8}
-              className="mt-1 min-h-touch w-full rounded border border-border p-2"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </label>
           <label className="block text-sm">
             确认密码
-            <input
+            <Input
               required
               type="password"
               minLength={8}
-              className="mt-1 min-h-touch w-full rounded border border-border p-2"
               value={form.confirmPassword}
               onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
             />

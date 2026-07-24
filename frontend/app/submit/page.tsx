@@ -8,6 +8,7 @@ import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input, Textarea } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { LoadingState } from '@/components/ui/loading-state'
 
@@ -172,9 +173,8 @@ export default function SubmitPage() {
           <label htmlFor="display-name" className="mt-3 block text-sm">
             通用名
           </label>
-          <input
+          <Input
             id="display-name"
-            className="mt-1 min-h-touch w-full rounded border border-border p-2"
             placeholder="留空时使用第一条账号用户名"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -184,20 +184,20 @@ export default function SubmitPage() {
           <h2 className="font-semibold">2. 账号</h2>
           {accounts.map((a, i) => (
             <div className="mt-3 flex flex-col gap-2 md:flex-row" key={i}>
-              <input
-                className="min-h-touch rounded border border-border p-2 md:w-28"
+              <Input
+                className="md:w-28"
                 value={a.platform}
                 onChange={(e) => setAccounts(accounts.map((x, j) => (j === i ? { ...x, platform: e.target.value } : x)))}
                 aria-label={`平台 ${i + 1}`}
               />
-              <input
-                className="min-h-touch flex-1 rounded border border-border p-2"
+              <Input
+                className="flex-1"
                 placeholder="用户名"
                 value={a.username}
                 onChange={(e) => setAccounts(accounts.map((x, j) => (j === i ? { ...x, username: e.target.value } : x)))}
               />
-              <input
-                className="min-h-touch flex-1 rounded border border-border p-2"
+              <Input
+                className="flex-1"
                 placeholder="账号 ID"
                 value={a.account_id}
                 onChange={(e) => setAccounts(accounts.map((x, j) => (j === i ? { ...x, account_id: e.target.value } : x)))}
@@ -217,44 +217,39 @@ export default function SubmitPage() {
           <h2 className="font-semibold">3. 事件与证据</h2>
           {events.map((v, i) => (
             <div className="mt-3 space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0" key={i}>
-              <input
+              <Input
                 required
-                className="min-h-touch w-full rounded border border-border p-2"
                 placeholder="事件标题"
                 value={v.title}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
               />
-              <textarea
+              <Textarea
                 required
-                className="w-full rounded border border-border p-2"
                 placeholder="事件详情"
                 value={v.details}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, details: e.target.value } : x)))}
               />
-              <textarea
-                className="w-full rounded border border-border p-2"
+              <Textarea
                 placeholder="可选文本证据（保存为 .txt，最大 200KiB）"
                 value={v.text_evidence}
                 onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, text_evidence: e.target.value } : x)))}
               />
               <div className="grid gap-2 md:grid-cols-2">
-                <input
-                  className="min-h-touch rounded border border-border p-2"
+                <Input
                   placeholder="可选链接标题"
                   value={v.link_title}
                   onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, link_title: e.target.value } : x)))}
                 />
-                <input
-                  className="min-h-touch rounded border border-border p-2"
+                <Input
                   placeholder="可选链接 URL (https://...)"
                   value={v.link_url}
                   onChange={(e) => setEvents(events.map((x, j) => (j === i ? { ...x, link_url: e.target.value } : x)))}
                 />
               </div>
-              <input
+              <Input
                 type="file"
                 multiple
-                className="block w-full text-sm"
+                className="block"
                 onChange={(e) =>
                   setEvents(
                     events.map((x, j) => (j === i ? { ...x, files: e.target.files ? Array.from(e.target.files) : [] } : x)),
@@ -281,8 +276,8 @@ export default function SubmitPage() {
         <Panel>
           <h2 className="font-semibold">4. 验证与发布</h2>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <input
-              className="min-h-touch min-w-0 flex-1 rounded border border-border p-2"
+            <Input
+              className="min-w-0 flex-1"
               placeholder="邮箱验证码（开发环境 123456）"
               value={verificationCode}
               onChange={(e) => setVerificationCode(e.target.value)}

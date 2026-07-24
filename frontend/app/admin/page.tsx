@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
+import { Table, Th, Td } from '@/components/ui/table'
 
 type Submission = { id: string; reason: string; status: string }
 type LegacyCase = { id: string; title: string; status: string; severity: number }
@@ -113,24 +114,24 @@ export default function AdminPage() {
               <EmptyState message="暂无旧举报记录" />
             </div>
           ) : (
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead className="bg-background text-left text-muted">
+            <Table>
+              <thead className="text-left">
                 <tr>
-                  <th className="px-4 py-3">原因</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3">操作</th>
+                  <Th>原因</Th>
+                  <Th>状态</Th>
+                  <Th>操作</Th>
                 </tr>
               </thead>
               <tbody>
                 {submissions.map((sub) => (
                   <tr key={sub.id} className="border-t border-border">
-                    <td className="px-4 py-3">{sub.reason}</td>
-                    <td className="px-4 py-3">
+                    <Td>{sub.reason}</Td>
+                    <Td>
                       <Badge tone={sub.status === 'pending' ? 'warning' : sub.status === 'approved' ? 'success' : 'danger'}>
                         {sub.status}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3">
+                    </Td>
+                    <Td>
                       {sub.status === 'pending' && (
                         <div className="flex gap-2">
                           <Button variant="ghost" onClick={() => handleReview(sub.id, 'approved')}>
@@ -141,11 +142,11 @@ export default function AdminPage() {
                           </Button>
                         </div>
                       )}
-                    </td>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
         </Panel>
       ) : (
@@ -155,32 +156,32 @@ export default function AdminPage() {
               <EmptyState message="暂无旧案件记录" />
             </div>
           ) : (
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead className="bg-background text-left text-muted">
+            <Table>
+              <thead className="text-left">
                 <tr>
-                  <th className="px-4 py-3">标题</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3">严重程度</th>
-                  <th className="px-4 py-3">兼容跳转</th>
+                  <Th>标题</Th>
+                  <Th>状态</Th>
+                  <Th>严重程度</Th>
+                  <Th>兼容跳转</Th>
                 </tr>
               </thead>
               <tbody>
                 {cases.map((item) => (
                   <tr key={item.id} className="border-t border-border">
-                    <td className="px-4 py-3">{item.title}</td>
-                    <td className="px-4 py-3">
+                    <Td>{item.title}</Td>
+                    <Td>
                       <Badge>{item.status}</Badge>
-                    </td>
-                    <td className="px-4 py-3">{item.severity}/5</td>
-                    <td className="px-4 py-3">
+                    </Td>
+                    <Td>{item.severity}/5</Td>
+                    <Td>
                       <Link href={`/events/${item.id}`} className="text-primary hover:underline">
                         尝试作为事件打开
                       </Link>
-                    </td>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           )}
         </Panel>
       )}

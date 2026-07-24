@@ -7,7 +7,9 @@ import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import { adminSettingsToMap, flattenAdminSettings } from '@/lib/settings'
 import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Input, Select, Textarea } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
 
@@ -141,11 +143,11 @@ export default function AdminSettingsPage() {
             />
             <label className="block text-sm">
               主题色
-              <input
+              <Input
                 type="color"
                 defaultValue={displayString('site.theme_color', '#2563EB')}
                 onChange={(e) => handleSave('site.theme_color', e.target.value)}
-                className="mt-1 block rounded border border-border px-2 py-1"
+                className="mt-1 block w-auto rounded border border-black/10 px-2 py-1"
               />
             </label>
             <Field
@@ -194,16 +196,15 @@ export default function AdminSettingsPage() {
             />
             <label className="block text-sm">
               人机验证提供商
-              <select
+              <Select
                 defaultValue={displayString('security.captcha_provider', 'turnstile')}
                 onChange={(e) => handleSave('security.captcha_provider', e.target.value)}
-                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               >
                 <option value="turnstile">Cloudflare Turnstile</option>
                 <option value="recaptcha">Google reCAPTCHA</option>
                 <option value="hcaptcha">hCaptcha</option>
                 <option value="none">无</option>
-              </select>
+              </Select>
             </label>
             <Field
               label="Captcha Site Key（公开）"
@@ -292,18 +293,17 @@ function Field({
     <label className="block text-sm">
       {label}
       {textarea ? (
-        <textarea
+        <Textarea
           defaultValue={defaultValue}
           onBlur={(e) => onBlur(e.target.value)}
-          className="mt-1 h-24 w-full rounded border border-border px-4 py-2"
           placeholder={placeholder}
+          className="h-24"
         />
       ) : (
-        <input
+        <Input
           type={type}
           defaultValue={defaultValue}
           onBlur={(e) => onBlur(e.target.value)}
-          className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
           placeholder={placeholder}
         />
       )}

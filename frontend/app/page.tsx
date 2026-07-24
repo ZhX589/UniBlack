@@ -7,6 +7,7 @@ import { apiRequest } from '@/lib/api'
 import type { Statistics } from '@/lib/types'
 import { useSite } from '@/app/providers'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Alert } from '@/components/ui/alert'
 
@@ -52,12 +53,11 @@ export default function Home() {
           <label className="sr-only" htmlFor="home-verify">
             核验账号
           </label>
-          <input
+          <Input
             id="home-verify"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="QQ / Discord / Telegram / 邮箱..."
-            className="min-h-touch flex-1 rounded border border-border bg-surface px-4 py-2"
           />
           <Button type="submit">开始核验</Button>
         </form>

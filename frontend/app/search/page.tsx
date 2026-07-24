@@ -7,6 +7,7 @@ import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import type { Subject } from '@/lib/types'
 import { Button } from '@/components/ui/button'
+import { Input, Select } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -88,12 +89,11 @@ export default function SearchPage() {
           <label className="sr-only" htmlFor="search-query">
             搜索关键词
           </label>
-          <input
+          <Input
             id="search-query"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="输入QQ号、用户名、邮箱等"
-            className="min-h-touch flex-1 rounded border border-border px-4 py-2"
           />
           <Button type="submit" disabled={mode === 'loading'}>
             {mode === 'loading' ? '搜索中...' : '搜索'}
@@ -107,11 +107,10 @@ export default function SearchPage() {
           <label className="sr-only" htmlFor="lookup-platform">
             平台
           </label>
-          <select
+          <Select
             id="lookup-platform"
             value={platform}
             onChange={(event) => setPlatform(event.target.value)}
-            className="min-h-touch rounded border border-border px-4 py-2"
           >
             <option value="qq">QQ</option>
             <option value="wechat">微信</option>
@@ -123,7 +122,7 @@ export default function SearchPage() {
             <option value="steam">Steam</option>
             <option value="phone">手机号</option>
             <option value="email">邮箱</option>
-          </select>
+          </Select>
           <Button type="submit" variant="secondary" disabled={mode === 'loading'}>
             精确查询
           </Button>

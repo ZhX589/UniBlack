@@ -7,11 +7,14 @@ import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import type { Sanction } from '@/lib/types'
 import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
+import { Input, Select, Textarea } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
+import { Table, Th, Td } from '@/components/ui/table'
 
 export default function SanctionsPage() {
   const { status } = useAuth()
@@ -91,32 +94,29 @@ export default function SanctionsPage() {
         <form onSubmit={submit} className="space-y-3">
           <label className="block text-sm">
             用户 UUID
-            <input
+            <Input
               required
-              className="mt-1 min-h-touch w-full rounded border border-border p-2"
               value={form.user_id}
               onChange={(e) => setForm({ ...form, user_id: e.target.value })}
             />
           </label>
           <label className="block text-sm">
             类型
-            <select
-              className="mt-1 min-h-touch w-full rounded border border-border p-2"
+            <Select
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value })}
             >
               <option value="warning">警告</option>
               <option value="submission_suspension">限期禁止提交</option>
               <option value="submission_ban">永久禁止提交</option>
-            </select>
+            </Select>
           </label>
           {form.type === 'submission_suspension' && (
             <label className="block text-sm">
               截止时间
-              <input
+              <Input
                 required
                 type="datetime-local"
-                className="mt-1 min-h-touch w-full rounded border border-border p-2"
                 value={form.ends_at}
                 onChange={(e) => setForm({ ...form, ends_at: e.target.value })}
               />
@@ -124,9 +124,8 @@ export default function SanctionsPage() {
           )}
           <label className="block text-sm">
             处罚原因
-            <textarea
+            <Textarea
               required
-              className="mt-1 w-full rounded border border-border p-2"
               value={form.reason}
               onChange={(e) => setForm({ ...form, reason: e.target.value })}
             />
@@ -142,30 +141,30 @@ export default function SanctionsPage() {
           <LoadingState />
         ) : (
           <div className="mt-3 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <Table>
               <thead>
                 <tr className="border-b border-border">
-                  <th className="py-2 pr-4">用户</th>
-                  <th className="py-2 pr-4">类型</th>
-                  <th className="py-2 pr-4">原因</th>
-                  <th className="py-2 pr-4">状态</th>
-                  <th className="py-2">操作</th>
+                  <Th className="py-2 pr-4">用户</Th>
+                  <Th className="py-2 pr-4">类型</Th>
+                  <Th className="py-2 pr-4">原因</Th>
+                  <Th className="py-2 pr-4">状态</Th>
+                  <Th className="py-2">操作</Th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} className="border-b border-border align-top">
-                    <td className="py-2 pr-4 font-mono text-xs">{item.user_id}</td>
-                    <td className="py-2 pr-4">{item.type}</td>
-                    <td className="py-2 pr-4">{item.reason}</td>
-                    <td className="py-2 pr-4">{item.revoked_at ? '已撤销' : '生效中'}</td>
-                    <td className="py-2">
+                    <Td className="py-2 pr-4 font-mono text-xs">{item.user_id}</Td>
+                    <Td className="py-2 pr-4">{item.type}</Td>
+                    <Td className="py-2 pr-4">{item.reason}</Td>
+                    <Td className="py-2 pr-4">{item.revoked_at ? '已撤销' : '生效中'}</Td>
+                    <Td className="py-2">
                       {!item.revoked_at && (
                         <Button type="button" variant="ghost" onClick={() => revoke(item.id)}>
                           撤销
                         </Button>
                       )}
-                    </td>
+                    </Td>
                   </tr>
                 ))}
                 {items.length === 0 && (
@@ -176,7 +175,7 @@ export default function SanctionsPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
       </Panel>

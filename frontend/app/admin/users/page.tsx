@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
+import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
+import { Table, Th, Td } from '@/components/ui/table'
 
 const AVAILABLE_ROLES = ['admin', 'moderator', 'user']
 
@@ -116,7 +118,7 @@ export default function AdminUsersPage() {
           <label htmlFor="user-search" className="sr-only">
             搜索用户
           </label>
-          <input
+          <Input
             id="user-search"
             value={search}
             onChange={(e) => {
@@ -124,7 +126,6 @@ export default function AdminUsersPage() {
               setSearch(e.target.value)
             }}
             placeholder="搜索用户名或邮箱..."
-            className="min-h-touch w-full rounded border border-border px-4 py-2"
           />
         </div>
         {error && (
@@ -140,22 +141,22 @@ export default function AdminUsersPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[48rem] text-sm">
-              <thead className="bg-background text-left text-muted">
+            <Table>
+              <thead className="text-left">
                 <tr>
-                  <th className="px-4 py-3">用户名</th>
-                  <th className="px-4 py-3">邮箱</th>
-                  <th className="px-4 py-3">角色</th>
-                  <th className="px-4 py-3">状态</th>
-                  <th className="px-4 py-3">操作</th>
+                  <Th>用户名</Th>
+                  <Th>邮箱</Th>
+                  <Th>角色</Th>
+                  <Th>状态</Th>
+                  <Th>操作</Th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => (
                   <tr key={user.id} className="border-t border-border">
-                    <td className="px-4 py-3">{user.username}</td>
-                    <td className="px-4 py-3">{user.email}</td>
-                    <td className="px-4 py-3">
+                    <Td>{user.username}</Td>
+                    <Td>{user.email}</Td>
+                    <Td>
                       <div className="flex flex-wrap items-center gap-1">
                         {(user.roles || []).map((role) => (
                           <span key={role} className="inline-flex items-center gap-1">
@@ -190,13 +191,13 @@ export default function AdminUsersPage() {
                           ))}
                         </div>
                       )}
-                    </td>
-                    <td className="px-4 py-3">
+                    </Td>
+                    <Td>
                       <Badge tone={user.is_active ? 'success' : 'danger'}>
                         {user.is_active ? '活跃' : '禁用'}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3">
+                    </Td>
+                    <Td>
                       <div className="flex flex-wrap gap-1">
                         <Button variant="ghost" onClick={() => handleToggleActive(user.id, !user.is_active)}>
                           {user.is_active ? '禁用' : '启用'}
@@ -227,11 +228,11 @@ export default function AdminUsersPage() {
                           </button>
                         </div>
                       )}
-                    </td>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border p-4 text-sm">

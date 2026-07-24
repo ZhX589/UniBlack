@@ -7,6 +7,7 @@ import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
 
@@ -83,30 +84,27 @@ export default function SetupPage() {
         <form onSubmit={handleInitialize} className="space-y-4">
           <label className="block text-sm">
             系统名称
-            <input
-              className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
+            <Input
               value={siteName}
               onChange={(e) => setSiteName(e.target.value)}
             />
           </label>
           <label className="block text-sm">
             管理员密码
-            <input
+            <Input
               type="password"
               required
               minLength={8}
-              className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </label>
           <label className="block text-sm">
             确认密码
-            <input
+            <Input
               type="password"
               required
               minLength={8}
-              className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
             />

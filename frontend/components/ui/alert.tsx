@@ -7,10 +7,10 @@ export function Alert({
 }) {
   const classes =
     tone === 'success'
-      ? 'border-success/30 bg-green-50 text-success'
+      ? 'border-success/20 bg-success/5 text-success glass'
       : tone === 'warning'
-        ? 'border-warning/30 bg-yellow-50 text-warning'
-        : 'border-danger/30 bg-red-50 text-danger'
+        ? 'border-warning/20 bg-warning/5 text-warning glass'
+        : 'border-danger/20 bg-danger/5 text-danger glass'
   return (
     <div role="alert" className={`rounded border p-3 text-sm ${classes}`}>
       {children}
