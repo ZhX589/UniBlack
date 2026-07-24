@@ -28,7 +28,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="grid gap-6 md:grid-cols-[13rem_1fr]">
-      <aside className="rounded-lg bg-gray-900 p-4 text-white">
+      <aside className="glass sticky top-14 self-start rounded-lg border border-white/10 bg-gray-900/85 p-4 text-white">
         <p className="mb-4 font-semibold">管理控制台</p>
         <nav className="space-y-2">
           {links.map((item) => (
@@ -38,8 +38,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               aria-current={isNavActive(path, item) ? 'page' : undefined}
               className={
                 isNavActive(path, item)
-                  ? 'block rounded bg-gray-700 p-2'
-                  : 'block rounded p-2 text-gray-300 hover:bg-gray-800'
+                  ? 'block rounded bg-white/10 p-2'
+                  : 'block rounded p-2 text-gray-300 hover:bg-white/5'
               }
             >
               {item.label}
