@@ -13,6 +13,8 @@ import { ErrorState } from '@/components/ui/error-state'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
 
+const AVAILABLE_ROLES = ['admin', 'moderator', 'user']
+
 export default function AdminUsersPage() {
   const { status } = useAuth()
   const router = useRouter()
@@ -22,6 +24,8 @@ export default function AdminUsersPage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [editingUser, setEditingUser] = useState<string | null>(null)
+  const [resetResult, setResetResult] = useState<Record<string, string>>({})
 
   const fetchUsers = useCallback(async () => {
     if (status !== 'authenticated') return
@@ -59,6 +63,45 @@ export default function AdminUsersPage() {
       await fetchUsers()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '更新用户失败')
+    }
+  }
+
+  const handleAssignRole = async (userId: string, roleName: string) => {
+    try {
+      await apiRequest(`/api/admin/users/${userId}/roles`, {
+        method: 'POST',
+        auth: true,
+        json: { role_name: roleName },
+      })
+      await fetchUsers()
+    } catch {
+      setError('角色分配失败')
+    }
+  }
+
+  const handleRemoveRole = async (userId: string, roleName: string) => {
+    try {
+      await apiRequest(`/api/admin/users/${userId}/roles/${roleName}`, {
+        method: 'DELETE',
+        auth: true,
+      })
+      await fetchUsers()
+    } catch {
+      setError('角色移除失败')
+    }
+  }
+
+  const handleResetPassword = async (userId: string) => {
+    if (!window.confirm('确定重置该用户密码？')) return
+    try {
+      const data = await apiRequest<{ new_password: string }>(
+        `/api/admin/users/${userId}/reset-password`,
+        { method: 'POST', auth: true },
+      )
+      const pw = data.new_password
+      setResetResult((prev) => ({ ...prev, [userId]: pw }))
+    } catch {
+      setError('密码重置失败')
     }
   }
 
@@ -113,20 +156,77 @@ export default function AdminUsersPage() {
                     <td className="px-4 py-3">{user.username}</td>
                     <td className="px-4 py-3">{user.email}</td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-wrap items-center gap-1">
                         {(user.roles || []).map((role) => (
-                          <Badge key={role}>{role}</Badge>
+                          <span key={role} className="inline-flex items-center gap-1">
+                            <Badge>{role}</Badge>
+                            {editingUser === user.id && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRole(user.id, role)}
+                                className="ml-0.5 text-xs text-danger hover:underline"
+                                aria-label={`移除角色 ${role}`}
+                              >
+                                ×
+                              </button>
+                            )}
+                          </span>
                         ))}
                         {(user.roles || []).length === 0 && <span className="text-muted">无角色</span>}
                       </div>
+                      {editingUser === user.id && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {AVAILABLE_ROLES.filter(
+                            (r) => !(user.roles || []).includes(r),
+                          ).map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => handleAssignRole(user.id, r)}
+                              className="rounded border border-border px-1.5 py-0.5 text-xs hover:bg-surface"
+                            >
+                              +{r}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge tone={user.is_active ? 'success' : 'danger'}>{user.is_active ? '活跃' : '禁用'}</Badge>
+                      <Badge tone={user.is_active ? 'success' : 'danger'}>
+                        {user.is_active ? '活跃' : '禁用'}
+                      </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      <Button variant="ghost" onClick={() => handleToggleActive(user.id, !user.is_active)}>
-                        {user.is_active ? '禁用' : '启用'}
-                      </Button>
+                      <div className="flex flex-wrap gap-1">
+                        <Button variant="ghost" onClick={() => handleToggleActive(user.id, !user.is_active)}>
+                          {user.is_active ? '禁用' : '启用'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          onClick={() => setEditingUser(editingUser === user.id ? null : user.id)}
+                        >
+                          {editingUser === user.id ? '完成' : '角色'}
+                        </Button>
+                        <Button variant="ghost" onClick={() => handleResetPassword(user.id)}>
+                          重置密码
+                        </Button>
+                      </div>
+                      {resetResult[user.id] && (
+                        <div className="mt-1 rounded bg-success/10 p-1.5 text-xs text-success">
+                          新密码: {resetResult[user.id]}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = { ...resetResult }
+                              delete next[user.id]
+                              setResetResult(next)
+                            }}
+                            className="ml-2 text-muted hover:text-foreground"
+                          >
+                            清除
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}

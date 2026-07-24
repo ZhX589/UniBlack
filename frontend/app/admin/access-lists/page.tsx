@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/app/providers'
-import { apiRequest } from '@/lib/api'
+import { apiBlob, apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import type { AccessListEntry } from '@/lib/types'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +26,8 @@ export default function AccessListsPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [error, setError] = useState('')
   const [newEntry, setNewEntry] = useState({ type: 'blacklist', target: 'ip', value: '', reason: '' })
+  const [importResult, setImportResult] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchEntries = useCallback(async () => {
     if (status !== 'authenticated') return
@@ -74,6 +76,39 @@ export default function AccessListsPage() {
     }
   }
 
+  async function handleExportCSV() {
+    try {
+      const blob = await apiBlob('/api/admin/access-lists/csv', { auth: true })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `access-lists-${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('导出失败')
+    }
+  }
+
+  async function handleImportCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setImportResult('')
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const data = await apiRequest<{ imported: number; skipped: number }>(
+        '/api/admin/access-lists/csv',
+        { method: 'POST', auth: true, body: form },
+      )
+      setImportResult(`导入 ${data.imported} 条，跳过 ${data.skipped} 条`)
+      await fetchEntries()
+    } catch {
+      setImportResult('导入失败')
+    }
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
   if (status === 'loading') return <LoadingState />
   if (status === 'anonymous') return null
 
@@ -81,7 +116,14 @@ export default function AccessListsPage() {
     <div className="py-4">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-bold">名单管理</h1>
-        <Button onClick={() => setShowAdd(true)}>添加条目</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => setShowAdd(true)}>添加条目</Button>
+          <Button variant="secondary" onClick={handleExportCSV}>导出 CSV</Button>
+          <label className="inline-flex min-h-touch cursor-pointer items-center rounded bg-secondary px-4 text-sm text-secondary-foreground hover:bg-secondary/80">
+            导入 CSV
+            <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
+          </label>
+        </div>
       </div>
 
       <div className="mb-6 flex flex-wrap gap-2">
@@ -107,6 +149,9 @@ export default function AccessListsPage() {
         <div className="mb-4">
           <ErrorState message={error} />
         </div>
+      )}
+      {importResult && (
+        <div className="mb-4 rounded bg-surface p-3 text-sm">{importResult}</div>
       )}
 
       {showAdd && (

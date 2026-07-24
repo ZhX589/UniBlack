@@ -18,7 +18,7 @@
 | 登录态 | Providers 解析 JWT、401 统一 logout、return URL | 已实现 | 统一 401、return URL、token 仅在 providers/api |
 | 站点品牌 | 顶栏 `site.name`、主题色 token | 部分实现 | 描述/Logo 更完整驱动 Shell |
 | 前端 RBAC | 管理入口按角色；`admin/layout` 守卫 | 已实现 | 声明式注册表（已落地） |
-| 管理信息架构 | 侧栏：审核/用户/名单/处罚/归档/设置/（申诉队列） | 部分实现 | 完整数据控制台密度与工具栏 |
+| 管理信息架构 | 侧栏：审核/用户/名单/处罚/归档/设置/（申诉队列） | 已实现 | 完整数据控制台密度与工具栏 |
 | 客户端导航 | `Link`/router 为主 | 已实现 | 业务页统一 Link/router |
 | API 访问 | `lib/api.ts`；页面无直连 token/`fetch` | 已实现 | typed API client 统一 auth、401、错误 |
 | 类型安全 | `lib/types.ts` 集中领域类型 | 部分实现 | 页面无业务 `any` |
@@ -50,8 +50,9 @@
 | `/login`、`/register` | Auth + demo captcha | 错误态统一 | 简洁认证 Shell |
 | `/sanctions` | 我的处罚 + 一次申诉 | — | 治理自助页 |
 | `/setup` | 初始化 | Setup Shell 抛光 | 独立 Setup Shell |
-| `/admin/*` | 守卫 + 侧栏 + 治理页 | 表格密度 | 数据控制台 |
+| `/admin/*` | 守卫 + 侧栏 + 治理页 + 角色管理 + 密码重置 | 表格密度 | 数据控制台 |
 | `/admin/appeals` | 事件申诉队列 | 批量操作 | 审核工作台 |
+| `/admin/access-lists` | CRUD + CSV 导入/导出 | — | 名单管理 |
 
 ## Roadmap 功能差距
 

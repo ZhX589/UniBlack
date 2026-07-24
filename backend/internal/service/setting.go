@@ -1,9 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"strings"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
@@ -290,6 +295,85 @@ func (s *SystemSettingService) DeleteAccessListEntry(ctx context.Context, id str
 
 func (s *SystemSettingService) IsListed(ctx context.Context, listType, target, value string) (bool, error) {
 	return s.accessListRepo.IsListed(ctx, listType, target, value)
+}
+
+// ExportAccessListCSV returns all access list entries as CSV bytes.
+func (s *SystemSettingService) ExportAccessListCSV(ctx context.Context) ([]byte, error) {
+	blacklist, err := s.accessListRepo.GetEntriesByType(ctx, "blacklist")
+	if err != nil {
+		return nil, err
+	}
+	whitelist, err := s.accessListRepo.GetEntriesByType(ctx, "whitelist")
+	if err != nil {
+		return nil, err
+	}
+	all := append(blacklist, whitelist...)
+	var buf bytes.Buffer
+	buf.WriteString("type,target,value,reason\n")
+	for _, e := range all {
+		reason := ""
+		if e.Reason != nil {
+			reason = *e.Reason
+		}
+		reason = escapeCSV(reason)
+		buf.WriteString(fmt.Sprintf("%s,%s,%s,%s\n", e.Type, e.Target, e.Value, reason))
+	}
+	return buf.Bytes(), nil
+}
+
+// ImportAccessListCSV reads CSV and creates access list entries. Returns a summary.
+func (s *SystemSettingService) ImportAccessListCSV(ctx context.Context, r io.Reader) (map[string]interface{}, error) {
+	reader := csv.NewReader(r)
+	reader.TrimLeadingSpace = true
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(records) < 2 {
+		return nil, errors.New("csv must have header and at least one data row")
+	}
+	imported, skipped := 0, 0
+	for i := 1; i < len(records); i++ {
+		row := records[i]
+		if len(row) < 3 {
+			skipped++
+			continue
+		}
+		listType := strings.TrimSpace(row[0])
+		if listType != "blacklist" && listType != "whitelist" {
+			skipped++
+			continue
+		}
+		target := strings.TrimSpace(row[1])
+		if target == "" {
+			skipped++
+			continue
+		}
+		value := strings.TrimSpace(row[2])
+		if value == "" {
+			skipped++
+			continue
+		}
+		var reason *string
+		if len(row) > 3 && strings.TrimSpace(row[3]) != "" {
+			r := strings.TrimSpace(row[3])
+			reason = &r
+		}
+		entry := &models.AccessList{Type: listType, Target: target, Value: value, Reason: reason}
+		if err := s.accessListRepo.CreateEntry(ctx, entry); err != nil {
+			skipped++
+			continue
+		}
+		imported++
+	}
+	return map[string]interface{}{"imported": imported, "skipped": skipped}, nil
+}
+
+func escapeCSV(s string) string {
+	if strings.ContainsAny(s, ",\"\n") {
+		return "\"" + strings.ReplaceAll(s, "\"", "\"\"") + "\""
+	}
+	return s
 }
 
 func (s *SystemSettingService) createAuditLog(ctx context.Context, userID, action, resourceType string, resourceID *string, oldValues map[string]interface{}) {

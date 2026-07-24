@@ -36,7 +36,7 @@ func TestEventGovernanceIntegration(t *testing.T) {
 		subjectRepo := repository.NewSubjectRepository(database)
 		eventRepo := repository.NewEventRepository(database, store)
 		evidenceRepo := repository.NewEvidenceRepository(database)
-		eventService := service.NewEventService(eventRepo, subjectRepo, nil, nil, nil)
+		eventService := service.NewEventService(eventRepo, subjectRepo, nil, nil, nil, nil)
 		want := service.PublishLinkEvidenceRequest{EventIndex: 0, Title: "Original report", Description: "Publisher supplied context", URL: "https://example.test/reports/42"}
 		subject, err := eventService.Publish(ctx, service.PublishSubjectRequest{
 			DisplayName:  "Archive Subject",
@@ -67,7 +67,7 @@ func TestEventGovernanceIntegration(t *testing.T) {
 		if err != nil || !preview.Valid || len(preview.Conflicts) != 0 {
 			t.Fatalf("PreviewImport() = %#v, %v", preview, err)
 		}
-		imported, err := targetArchiveService.Import(ctx, bytes.NewReader(archive), targetPublisher.ID)
+		imported, err := targetArchiveService.Import(ctx, bytes.NewReader(archive), targetPublisher.ID, "test-import")
 		if err != nil {
 			t.Fatalf("Import() error = %v", err)
 		}
@@ -110,7 +110,7 @@ func TestEventGovernanceIntegration(t *testing.T) {
 		assertCount(t, database, &models.AuditLog{}, "resource_type = 'appeal' AND resource_id = ? AND action = 'resolve'", appeal.ID, 1)
 		assertCount(t, database, &models.AuditLog{}, "resource_type = 'sanction' AND action = 'create'", nil, 1)
 
-		eventService := service.NewEventService(repository.NewEventRepository(database), repository.NewSubjectRepository(database), repository.NewSanctionRepository(database), nil, nil)
+		eventService := service.NewEventService(repository.NewEventRepository(database), repository.NewSubjectRepository(database), repository.NewSanctionRepository(database), nil, nil, nil)
 		published, err := eventService.Publish(ctx, service.PublishSubjectRequest{
 			DisplayName: "Warning allowed",
 			Accounts:    []service.PublishAccountRequest{{Platform: "telegram", Username: "warning-allowed"}},

@@ -10,6 +10,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
@@ -151,4 +152,15 @@ func (h *EventHandler) Get(c echo.Context) error {
 		}
 	}
 	return c.JSON(http.StatusOK, e)
+}
+
+func (h *EventHandler) GetVersions(c echo.Context) error {
+	versions, err := h.service.GetVersions(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
+	}
+	if versions == nil {
+		versions = []models.EventVersion{}
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"versions": versions})
 }
