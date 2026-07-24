@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth, useSite } from '@/app/providers'
 import { isNavActive, visibleNavigation } from '@/lib/navigation'
+import { useScrollDirection } from '@/lib/use-scroll-direction'
 
 function NavLink({ href, children, exact }: { href: string; children: React.ReactNode; exact?: boolean }) {
   const pathname = usePathname()
@@ -23,6 +24,7 @@ export function SiteHeader() {
   const { status, user, logout, hasRole } = useAuth()
   const { name, registrationEnabled } = useSite()
   const router = useRouter()
+  const dir = useScrollDirection()
 
   const links = visibleNavigation({
     authenticated: status === 'authenticated',
@@ -39,8 +41,12 @@ export function SiteHeader() {
   }
 
   return (
-    <nav className="bg-gray-900 p-4 text-white">
-      <div className="container mx-auto flex flex-wrap items-center justify-between gap-4">
+    <header
+      className={`glass shell-slide sticky top-0 z-50 border-b border-white/10 bg-gray-900/85 text-white ${
+        dir === 'down' ? '-translate-y-full' : 'translate-y-0'
+      }`}
+    >
+      <nav className="container mx-auto flex flex-wrap items-center justify-between gap-4 px-4 py-3">
         <Link href="/" className="text-xl font-bold">
           {name}
         </Link>
@@ -67,7 +73,7 @@ export function SiteHeader() {
             )
           )}
         </div>
-      </div>
-    </nav>
+      </nav>
+    </header>
   )
 }
