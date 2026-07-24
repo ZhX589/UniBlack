@@ -115,3 +115,31 @@ func (h *SystemSettingHandler) DeleteAccessListEntry(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "entry deleted"})
 }
+
+// ExportAccessListCSV exports all access list entries as CSV.
+func (h *SystemSettingHandler) ExportAccessListCSV(c echo.Context) error {
+	csv, err := h.settingService.ExportAccessListCSV(c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", csv)
+}
+
+// ImportAccessListCSV imports access list entries from uploaded CSV.
+func (h *SystemSettingHandler) ImportAccessListCSV(c echo.Context) error {
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "csv file is required"})
+	}
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid file"})
+	}
+	defer src.Close()
+
+	result, err := h.settingService.ImportAccessListCSV(c.Request().Context(), src)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, result)
+}

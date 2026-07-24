@@ -283,3 +283,31 @@ type VerificationCode struct {
 }
 
 func (VerificationCode) TableName() string { return "verification_codes" }
+
+// PasswordResetToken stores a one-time token for password recovery.
+type PasswordResetToken struct {
+	ID        string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID    string     `gorm:"type:uuid;not null" json:"user_id"`
+	TokenHash string     `gorm:"type:varchar(128);uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time  `gorm:"not null" json:"expires_at"`
+	UsedAt    *time.Time `json:"used_at,omitempty"`
+	CreatedAt time.Time  `gorm:"autoCreateTime" json:"created_at"`
+}
+
+func (PasswordResetToken) TableName() string { return "password_reset_tokens" }
+
+// EventVersion records an append-only snapshot of an event at a point in time.
+type EventVersion struct {
+	ID            string    `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	EventID       string    `gorm:"type:uuid;not null" json:"event_id"`
+	VersionNumber int       `gorm:"not null" json:"version_number"`
+	Title         string    `gorm:"type:varchar(255);not null" json:"title"`
+	Details       string    `gorm:"type:text;not null;default:''" json:"details"`
+	Severity      int       `gorm:"not null;default:1" json:"severity"`
+	Status        string    `gorm:"type:varchar(32);not null" json:"status"`
+	ChangeType    string    `gorm:"type:varchar(20);not null;default:'create'" json:"change_type"`
+	ChangedBy     *string   `gorm:"type:uuid" json:"changed_by,omitempty"`
+	CreatedAt     time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+func (EventVersion) TableName() string { return "event_versions" }

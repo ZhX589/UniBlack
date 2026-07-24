@@ -215,3 +215,19 @@ func (h *UserManagementHandler) RemoveRole(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "role removed"})
 }
+
+// AdminResetPassword resets a user's password and returns the new temporary password.
+func (h *UserManagementHandler) AdminResetPassword(c echo.Context) error {
+	id := c.Param("id")
+
+	pwResetRepo := repository.NewPasswordResetRepository(h.db)
+	newPassword, err := pwResetRepo.AdminResetPassword(c.Request().Context(), id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"message":      "password has been reset",
+		"new_password": newPassword,
+	})
+}

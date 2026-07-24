@@ -331,7 +331,7 @@ func (s *ArchiveService) PreviewImport(r io.Reader) (ImportPreview, error) {
 // Import writes a validated archive only if its public ID is still absent.
 // Files are stored under the subject namespace before metadata and removed if the
 // transaction fails. A process-local mutex serializes confirmation imports.
-func (s *ArchiveService) Import(ctx context.Context, r io.Reader, actorID string) (*models.Subject, error) {
+func (s *ArchiveService) Import(ctx context.Context, r io.Reader, actorID string, source string) (*models.Subject, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -427,7 +427,11 @@ func (s *ArchiveService) Import(ctx context.Context, r io.Reader, actorID string
 			})
 		}
 	}
-	audit := &models.AuditLog{UserID: &actorID, Action: "import", ResourceType: "subject", Changes: map[string]interface{}{"public_id": manifest.PublicID}}
+	changes := map[string]interface{}{"public_id": manifest.PublicID}
+	if source != "" {
+		changes["import_source"] = source
+	}
+	audit := &models.AuditLog{UserID: &actorID, Action: "import", ResourceType: "subject", Changes: changes}
 	if err := s.events.PublishWithEvidence(ctx, subject, manifest.Accounts, events, evidenceRows, audit); err != nil {
 		cleanup()
 		return nil, err

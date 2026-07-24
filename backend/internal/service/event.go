@@ -24,15 +24,16 @@ type EventService struct {
 	subjects  *repository.SubjectRepository
 	sanctions *repository.SanctionRepository
 	users     *repository.UserRepository
+	versions  *repository.EventVersionRepository
 	verifier  interface {
 		VerifySubmissionValidation(context.Context, string, string, string, string) error
 	}
 }
 
-func NewEventService(events *repository.EventRepository, subjects *repository.SubjectRepository, sanctions *repository.SanctionRepository, users *repository.UserRepository, verifier interface {
+func NewEventService(events *repository.EventRepository, subjects *repository.SubjectRepository, sanctions *repository.SanctionRepository, users *repository.UserRepository, versions *repository.EventVersionRepository, verifier interface {
 	VerifySubmissionValidation(context.Context, string, string, string, string) error
 }) *EventService {
-	return &EventService{events: events, subjects: subjects, sanctions: sanctions, users: users, verifier: verifier}
+	return &EventService{events: events, subjects: subjects, sanctions: sanctions, users: users, versions: versions, verifier: verifier}
 }
 
 type PublishAccountRequest struct {
@@ -311,6 +312,12 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		cleanup()
 		return nil, err
 	}
+	// Record version history for each created event.
+	if s.versions != nil {
+		for i := range events {
+			_ = s.versions.RecordVersion(ctx, &events[i], "create")
+		}
+	}
 	subject.Accounts = accounts
 	subject.Events = events
 	return subject, nil
@@ -358,4 +365,11 @@ func (s *EventService) SubjectPublicID(ctx context.Context, eventID string) (str
 		return "", err
 	}
 	return subject.PublicID, nil
+}
+
+func (s *EventService) GetVersions(ctx context.Context, eventID string) ([]models.EventVersion, error) {
+	if s.versions == nil {
+		return nil, nil
+	}
+	return s.versions.ListByEvent(ctx, eventID)
 }

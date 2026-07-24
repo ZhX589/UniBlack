@@ -71,6 +71,7 @@ type AuthService struct {
 	accessListRepo AccessListReader
 	verifyRepo     VerificationCodeStore
 	provider       auth.AuthProvider
+	passwordReset  *PasswordResetService
 }
 
 // NewAuthService creates a new auth service
@@ -80,6 +81,7 @@ func NewAuthService(
 	accessListRepo AccessListReader,
 	verifyRepo *repository.VerificationRepository,
 	provider auth.AuthProvider,
+	passwordReset *PasswordResetService,
 ) *AuthService {
 	var store VerificationCodeStore
 	if verifyRepo != nil {
@@ -91,6 +93,7 @@ func NewAuthService(
 		accessListRepo: accessListRepo,
 		verifyRepo:     store,
 		provider:       provider,
+		passwordReset:  passwordReset,
 	}
 }
 
@@ -449,4 +452,36 @@ func generateNumericCode(n int) (string, error) {
 		b = append(b, byte('0'+v.Int64()))
 	}
 	return string(b), nil
+}
+
+// ForgotPassword sends a reset token to the user's email.
+func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
+	if s.passwordReset == nil {
+		return errors.New("password reset not available")
+	}
+	token, userEmail, err := s.passwordReset.CreateResetToken(ctx, email)
+	if err != nil {
+		return err
+	}
+	if token == "" {
+		// No user found — silently succeed.
+		return nil
+	}
+
+	// Best-effort email delivery.
+	m := s.loadMailer(ctx)
+	_ = m.Send(ctx, mailer.Message{
+		To:      []string{*userEmail},
+		Subject: "密码重置",
+		Body:    "您的密码重置令牌：" + token + "\n\n请在 1 小时内使用。",
+	})
+	return nil
+}
+
+// ResetPassword validates a token and sets a new password.
+func (s *AuthService) ResetPassword(ctx context.Context, rawToken, newPassword string) error {
+	if s.passwordReset == nil {
+		return errors.New("password reset not available")
+	}
+	return s.passwordReset.ResetPassword(ctx, rawToken, newPassword)
 }

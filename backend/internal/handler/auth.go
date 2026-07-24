@@ -160,3 +160,37 @@ func (h *AuthHandler) VerifyEmail(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "email verified"})
 }
+
+// ForgotPassword initiates password reset by sending a token to the user's email.
+func (h *AuthHandler) ForgotPassword(c echo.Context) error {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if err := h.authService.ForgotPassword(c.Request().Context(), req.Email); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to process request"})
+	}
+
+	// Always return success to avoid email enumeration.
+	return c.JSON(http.StatusOK, map[string]string{"message": "if the email exists, a reset token has been sent"})
+}
+
+// ResetPassword validates a reset token and sets a new password.
+func (h *AuthHandler) ResetPassword(c echo.Context) error {
+	var req struct {
+		Token       string `json:"token" validate:"required"`
+		NewPassword string `json:"new_password" validate:"required,min=8"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+
+	if err := h.authService.ResetPassword(c.Request().Context(), req.Token, req.NewPassword); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{"message": "password has been reset"})
+}

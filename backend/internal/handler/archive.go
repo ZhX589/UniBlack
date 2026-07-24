@@ -49,7 +49,8 @@ func (h *ArchiveHandler) Import(c echo.Context) error {
 	}
 	defer src.Close()
 	actorID, _ := c.Get("user_id").(string)
-	subject, err := h.service.Import(c.Request().Context(), src, actorID)
+	source := c.FormValue("source")
+	subject, err := h.service.Import(c.Request().Context(), src, actorID, source)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}

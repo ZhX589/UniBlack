@@ -36,9 +36,9 @@
 | 账号字段 | 部分实现 | `accounts` 表含 username/account_id/custom_attributes，规范化唯一索引已落地 | 旧 Identifier 兼容读取仍保留 |
 | 默认发布 | 部分实现 | multipart 发布可同事务写入文本+多文件证据，导出 ZIP 含 T/F 键，已 API smoke | 旧 Submission 审核兼容保留；链接证据随发布待补 |
 | 事件证据 | 部分实现 | Event 文本/文件归档键、SHA-256、可见性检查已 smoke | 旧 Case 证据路径仍兼容 |
-| 真实文件存储 | 部分实现 | LocalStorage 真实写盘；发布/导入补偿删除已 smoke | MinIO/S3 adapter 待补 |
-| 导出/导入包 | 部分实现 | ZIP、manifest v1、README、强制哈希、命名空间、冲突预览与确认导入已 smoke | 导入来源记录、异步大包任务待补 |
-| 申诉结论 | 部分实现 | Event appeal outcome + 处罚一次申诉/裁决已 smoke | malicious 自动建处罚、事件版本历史待补 |
+| 真实文件存储 | 已实现 | LocalStorage 真实写盘；S3/MinIO adapter 已实现，生产 fail-closed；发布/导入补偿删除已 smoke | |
+| 导出/导入包 | 已实现 | ZIP、manifest v1、README、强制哈希、命名空间、冲突预览与确认导入、import_source 审计已 smoke | 异步大包任务可选增强 |
+| 申诉结论 | 已实现 | Event appeal outcome + 处罚一次申诉/裁决 + malicious 自动建 warning 处罚已 smoke | 事件版本历史已落地（000013 migration + GET /events/:id/versions）|
 | 分级处罚 | 部分实现 | 列表/创建/撤销/发布拦截/审计/用户申诉/管理裁决已 smoke | 申诉管理列表 UI 仍可加强 |
 | 人机验证 | 部分实现 | 无第三方 URL；demo token 按 purpose/IP 或 JWT 用户绑定且单次使用已 smoke | appeal UI/API 与发送限流待补 |
 | 邮箱开发模式 | 部分实现 | development 固定 `123456`；register/submission 发码入口已实现 | appeal 发码 UI 与频率限制待补 |
@@ -71,21 +71,43 @@
 
 ### 4. Evidence 与 Storage
 
-**已有**：Event 证据 `event_id` + `storage_key` + SHA-256；文本 UTF-8/200KiB；文件归档键 `subjects/<publicID>/evidence/...`；LocalStorage 真实写盘；归档 ZIP/manifest 哈希校验与确认导入。
+**已有**：Event 证据 `event_id` + `storage_key` + SHA-256；文本 UTF-8/200KiB；文件归档键 `subjects/<publicID>/evidence/...`；LocalStorage 真实写盘；S3/MinIO adapter (`storage/s3.go`)，生产 fail-closed (`selectStorage`)；归档 ZIP/manifest 哈希校验与确认导入。
 
-**仍缺**：旧 Case 证据路径仍可用；MinIO/S3 adapter；生产对象存储切换与健康检查。
+**仍缺**：旧 Case 证据路径仍可用（兼容窗口至 2026-12-31）。
 
 ### 5. Appeal 与 Sanction
 
-**已有**：Event 申诉 outcome（含 corrected/withdrawn 等）；`sanctions` + `sanction_appeals`；列表/创建/撤销/用户一次申诉/管理裁决；发布拦截。
+**已有**：Event 申诉 outcome（含 corrected/withdrawn 等）；`malicious_submission` 自动创建 warning 处罚 + 审计 (appeal.go:159–169)；`sanctions` + `sanction_appeals`；列表/创建/撤销/用户一次申诉/管理裁决；发布拦截。
 
-**仍缺**：`malicious_submission` 自动建处罚；事件版本历史；处罚申诉管理列表 UI 可再加强；事件申诉前端入口仍弱。
+**仍缺**：事件版本历史已落地（`000013_event_versions` migration + `GET /api/events/:id/versions`）；处罚申诉管理列表 UI 可再加强；事件申诉前端入口仍弱。
 
 ### 6. Captcha 与邮箱
 
-**已有**：运行时仅 demo captcha（无第三方脚本/siteverify）；register/submission token 绑定；development 固定 `123456`；生产缺 SMTP 失败；purpose 区分；submission 发码需登录。
+**已有**：运行时仅 demo captcha（无第三方脚本/siteverify）；register/submission token 绑定；development 固定 `123456`；生产缺 SMTP 失败；purpose 区分；submission 发码需登录；发码 60s 限流。
 
-**仍缺**：发送频率限制；appeal 发码 UI；配置台 demo 模式文案与证据上限等 OptionMap 补全。
+**仍缺**：appeal 发码 UI；配置台 demo 模式文案与证据上限等 OptionMap 补全（KeyEvidenceMaxSize 已存在）。
+
+### 7. 用户管理与安全（2026-07 新增）
+
+**已有**：
+- 密码重置：`password_reset_tokens` 表（000012 migration）+ 公开 forgot-password / reset-password 端点 + 管理员重置密码端点 `POST /api/admin/users/:id/reset-password`
+- 用户角色分配：后端 `AssignRole` / `RemoveRole` handler + API；前端 admin/users 页角色添加/移除 UI
+- 管理员密码重置 UI：admin/users 页重置密码按钮，展示新密码
+
+**仍缺**：前端自助找回密码页面；密码复杂度策略。
+
+### 8. 名单 CSV 导入导出（2026-07 新增）
+
+**已有**：
+- `GET /api/admin/access-lists/csv` 导出全量条目为 CSV
+- `POST /api/admin/access-lists/csv` 从上传 CSV 批量导入条目，返回 imported/skipped 计数
+- 前端 admin/access-lists 页导出/导入按钮 + 结果展示
+
+**仍缺**：导入模板下载；CSV 格式校验错误行号提示。
+
+### 9. 归档导入来源（2026-07 新增）
+
+**已有**：`Import()` 接受可选 `source` 参数，存储于 audit log changes 的 `import_source` 字段中。
 
 ## 前端逐项差距（Phase 13 相关）
 

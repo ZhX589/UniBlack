@@ -15,7 +15,7 @@ import (
 
 func TestRegisterMapsBlacklistLookupFailureToServiceUnavailable(t *testing.T) {
 	e := echo.New()
-	h := NewAuthHandler(service.NewAuthService(nil, nil, failingRegistrationAccessList{}, nil, nil))
+	h := NewAuthHandler(service.NewAuthService(nil, nil, failingRegistrationAccessList{}, nil, nil, nil))
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"username":"new-user","email":"new@example.com","password":"password123"}`))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	res := httptest.NewRecorder()

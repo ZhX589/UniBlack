@@ -57,7 +57,7 @@ func TestRegisterAuthRoutesUsesAuthRateLimit(t *testing.T) {
 	}}
 	e := echo.New()
 	auth := e.Group("/api/auth")
-	registerAuthRoutes(auth, appMiddleware.NewRequestRateLimiter(settings, "security.rate_limit_auth").Middleware, noContentHandler(), noContentHandler(), noContentHandler(), noContentHandler(), noContentHandler())
+	registerAuthRoutes(auth, appMiddleware.NewRequestRateLimiter(settings, "security.rate_limit_auth").Middleware, noContentHandler(), noContentHandler(), noContentHandler(), noContentHandler(), noContentHandler(), noContentHandler(), noContentHandler())
 
 	for i := 0; i < 2; i++ {
 		res := httptest.NewRecorder()

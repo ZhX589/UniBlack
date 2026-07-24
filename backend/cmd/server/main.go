@@ -39,13 +39,15 @@ func registerLegacyCaseRoutes(group *echo.Group, create, list, get, update, dele
 	return legacyCases
 }
 
-func registerAuthRoutes(group *echo.Group, limiter echo.MiddlewareFunc, register, login, refresh, sendVerificationCode, verifyEmail echo.HandlerFunc) {
+func registerAuthRoutes(group *echo.Group, limiter echo.MiddlewareFunc, register, login, refresh, sendVerificationCode, verifyEmail, forgotPassword, resetPassword echo.HandlerFunc) {
 	group.Use(limiter)
 	group.POST("/register", register)
 	group.POST("/login", login)
 	group.POST("/refresh", refresh)
 	group.POST("/send-verification-code", sendVerificationCode)
 	group.POST("/verify-email", verifyEmail)
+	group.POST("/forgot-password", forgotPassword)
+	group.POST("/reset-password", resetPassword)
 }
 
 func main() {
@@ -108,6 +110,7 @@ func main() {
 	submissionRepo := repository.NewSubmissionRepository(database)
 	appealRepo := repository.NewAppealRepository(database)
 	eventRepo := repository.NewEventRepository(database, storageBackend)
+	eventVersionRepo := repository.NewEventVersionRepository(database)
 	sanctionRepo := repository.NewSanctionRepository(database)
 	auditRepo := repository.NewAuditLogRepository(database)
 	settingRepo := repository.NewSystemSettingRepository(database)
@@ -119,13 +122,15 @@ func main() {
 	if err := settingService.Bootstrap(context.Background()); err != nil {
 		log.Fatal(err)
 	}
-	authService := service.NewAuthService(userRepo, settingService, accessListRepo, verifyRepo, jwtProvider)
+	passwordResetRepo := repository.NewPasswordResetRepository(database)
+	passwordResetService := service.NewPasswordResetService(passwordResetRepo, userRepo)
+	authService := service.NewAuthService(userRepo, settingService, accessListRepo, verifyRepo, jwtProvider, passwordResetService)
 	subjectService := service.NewSubjectService(subjectRepo)
 	caseService := service.NewCaseService(caseRepo, subjectRepo, auditRepo, storageBackend)
 	evidenceService := service.NewEvidenceService(evidenceRepo, caseRepo, storageBackend)
 	submissionService := service.NewSubmissionService(submissionRepo, subjectRepo, caseRepo, auditRepo)
 	appealService := service.NewAppealService(appealRepo, caseRepo, eventRepo, auditRepo)
-	eventService := service.NewEventService(eventRepo, subjectRepo, sanctionRepo, userRepo, authService)
+	eventService := service.NewEventService(eventRepo, subjectRepo, sanctionRepo, userRepo, eventVersionRepo, authService)
 	sanctionService := service.NewSanctionService(sanctionRepo, auditRepo)
 	archiveService := exporter.NewArchiveService(subjectRepo, eventRepo, evidenceRepo, storageBackend)
 	setupService := service.NewSetupService(repository.NewSetupRepository(database))
@@ -175,7 +180,7 @@ func main() {
 
 	// Auth routes (public)
 	authGroup := e.Group("/api/auth")
-	registerAuthRoutes(authGroup, authLimiter.Middleware, authHandler.Register, authHandler.Login, authHandler.RefreshToken, authHandler.SendVerificationCode, authHandler.VerifyEmail)
+	registerAuthRoutes(authGroup, authLimiter.Middleware, authHandler.Register, authHandler.Login, authHandler.RefreshToken, authHandler.SendVerificationCode, authHandler.VerifyEmail, authHandler.ForgotPassword, authHandler.ResetPassword)
 	// Authenticated purpose-scoped codes (submission/appeal) share the same handler.
 	e.POST("/api/verification/demo/register", verificationHandler.IssueRegisterDemoToken, publicLimiter.Middleware)
 
@@ -259,6 +264,7 @@ func main() {
 
 	eventGroup := apiGroup.Group("/events")
 	eventGroup.GET("/:id", eventHandler.Get)
+	eventGroup.GET("/:id/versions", eventHandler.GetVersions)
 	eventGroup.GET("/:id/appeals", appealHandler.GetAppealsByEventID)
 	eventGroup.POST("/:id/appeals", appealHandler.CreateAppeal)
 	eventGroup.POST("/:id/evidence/text", evidenceHandler.CreateEventTextEvidence)
@@ -296,6 +302,7 @@ func main() {
 	adminGroup.PUT("/users/:id/active", userHandler.ToggleUserActive)
 	adminGroup.POST("/users/:id/roles", userHandler.AssignRole)
 	adminGroup.DELETE("/users/:id/roles/:role", userHandler.RemoveRole)
+	adminGroup.POST("/users/:id/reset-password", userHandler.AdminResetPassword)
 
 	// System settings (NewAPI-style option catalog + CRUD)
 	adminGroup.GET("/settings", settingHandler.GetAllSettings)
@@ -306,6 +313,8 @@ func main() {
 	adminGroup.GET("/access-lists", settingHandler.ListAccessListEntries)
 	adminGroup.POST("/access-lists", settingHandler.CreateAccessListEntry)
 	adminGroup.DELETE("/access-lists/:id", settingHandler.DeleteAccessListEntry)
+	adminGroup.GET("/access-lists/csv", settingHandler.ExportAccessListCSV)
+	adminGroup.POST("/access-lists/csv", settingHandler.ImportAccessListCSV)
 	adminGroup.GET("/sanctions", sanctionHandler.List)
 	adminGroup.POST("/sanctions", sanctionHandler.Create)
 	adminGroup.POST("/sanctions/:id/revoke", sanctionHandler.Revoke)
