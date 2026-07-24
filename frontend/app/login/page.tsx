@@ -8,6 +8,7 @@ import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 
 type LoginResponse = {
@@ -60,12 +61,11 @@ export default function LoginPage() {
             <label htmlFor="login-username" className="mb-2 block text-sm text-foreground">
               用户名
             </label>
-            <input
+            <Input
               id="login-username"
               type="text"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              className="min-h-touch w-full rounded border border-border px-4 py-2"
               required
             />
           </div>
@@ -73,12 +73,11 @@ export default function LoginPage() {
             <label htmlFor="login-password" className="mb-2 block text-sm text-foreground">
               密码
             </label>
-            <input
+            <Input
               id="login-password"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="min-h-touch w-full rounded border border-border px-4 py-2"
               required
             />
           </div>

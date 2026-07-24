@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'MapleMono NF CN';
+  src: url('/fonts/MapleMono-NF-CN.woff2') format('woff2'),
+       url('/fonts/MapleMono-NF-CN.ttf') format('truetype');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0020-2BFF, U+3000-303F, U+4E00-9FFF, U+FF00-FFEF;
+}
+
 :root {
   --background: #f6f8fa;
   --surface: #ffffff;
@@ -15,15 +25,26 @@
   --success: #067647;
   --focus: #2563eb;
   --radius: 0.5rem;
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-dark: rgba(15, 23, 35, 0.88);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.65);
+  --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --glass-radius: 0.625rem;
+
+  --text-display: #0f172a;
+  --text-body: #1e293b;
+  --text-secondary: #64748b;
+  --text-inverse: #f1f5f9;
+  --text-inverse-muted: #94a3b8;
+
+  --font-display: 'MapleMono NF CN', 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  --font-body: 'Inter', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'MapleMono NF CN', 'SFMono-Regular', Consolas, monospace;
 }
 
 body {
-  color: var(--foreground);
+  color: var(--text-body);
   background: var(--background);
-  font-family: Inter, 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
+  font-family: var(--font-body);
 }
 
 /* Frosted-glass utility */
@@ -41,14 +62,7 @@ body {
   .shell-slide {
     transition: none;
   }
-}
 
-*:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
@@ -57,4 +71,9 @@ body {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+*:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }

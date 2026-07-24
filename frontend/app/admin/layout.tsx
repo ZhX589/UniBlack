@@ -15,9 +15,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (status === 'anonymous') router.replace('/login?next=/admin')
   }, [status, router])
 
-  if (status === 'loading') return <p className="p-8 text-gray-500">正在验证管理权限...</p>
+  if (status === 'loading') return <p className="p-8 text-text-secondary">正在验证管理权限...</p>
   if (status === 'anonymous') return null
-  if (!hasRole('admin', 'moderator')) return <p className="p-8 text-red-700">403：没有管理权限。</p>
+  if (!hasRole('admin', 'moderator')) return <p className="p-8 text-danger">403：没有管理权限。</p>
 
   const links = visibleNavigation({
     authenticated: true,
@@ -28,8 +28,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="grid gap-6 md:grid-cols-[13rem_1fr]">
-      <aside className="glass sticky top-14 self-start rounded-lg border border-white/10 bg-gray-900/85 p-4 text-white">
-        <p className="mb-4 font-semibold">管理控制台</p>
+      <aside className="glass sticky top-14 self-start rounded-lg border border-white/10 bg-gray-900/85 p-4 text-text-inverse">
+        <p className="mb-4 font-semibold font-display">管理控制台</p>
         <nav className="space-y-2">
           {links.map((item) => (
             <Link
@@ -38,8 +38,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               aria-current={isNavActive(path, item) ? 'page' : undefined}
               className={
                 isNavActive(path, item)
-                  ? 'block rounded bg-white/10 p-2'
-                  : 'block rounded p-2 text-gray-300 hover:bg-white/5'
+                  ? 'block rounded bg-white/10 p-2 text-text-inverse'
+                  : 'block rounded p-2 text-text-inverse-muted hover:bg-white/5'
               }
             >
               {item.label}

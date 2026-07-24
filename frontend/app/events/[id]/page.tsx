@@ -10,6 +10,7 @@ import type { Appeal, EventItem } from '@/lib/types'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/input'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
 import { LoadingState } from '@/components/ui/loading-state'
@@ -152,9 +153,9 @@ export default function EventDetailPage() {
           <form onSubmit={submitAppeal} className="mt-4 space-y-3">
             <label className="block text-sm">
               申诉理由
-              <textarea
+              <Textarea
                 required
-                className="mt-1 min-h-[6rem] w-full rounded border border-border p-2"
+                className="min-h-[6rem]"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="说明事实错误、证据问题或请求撤回的原因"

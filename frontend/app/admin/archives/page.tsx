@@ -7,6 +7,7 @@ import { apiBlob, apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import { Alert } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
 
@@ -97,8 +98,8 @@ export default function ArchivesPage() {
       <Panel>
         <h2 className="font-semibold">导出对象</h2>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-          <input
-            className="min-h-touch min-w-0 flex-1 rounded border border-border p-2"
+          <Input
+            className="min-w-0 flex-1"
             placeholder="UBS_..."
             value={publicID}
             onChange={(e) => setPublicID(e.target.value)}
@@ -111,7 +112,7 @@ export default function ArchivesPage() {
       <Panel>
         <h2 className="font-semibold">导入预览</h2>
         <form onSubmit={previewImport} className="mt-3 space-y-3">
-          <input name="archive" type="file" accept=".zip,application/zip" className="block w-full" />
+          <Input name="archive" type="file" accept=".zip,application/zip" className="block" />
           <Button type="submit" variant="secondary">
             预览
           </Button>
@@ -123,7 +124,7 @@ export default function ArchivesPage() {
       <Panel>
         <h2 className="font-semibold">确认导入</h2>
         <form onSubmit={confirmImport} className="mt-3 space-y-3">
-          <input name="archive" type="file" accept=".zip,application/zip" className="block w-full" />
+          <Input name="archive" type="file" accept=".zip,application/zip" className="block" />
           <Button type="submit" variant="danger">
             确认导入
           </Button>

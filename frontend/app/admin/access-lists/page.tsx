@@ -10,8 +10,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
+import { Input, Select } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
+import { Table, Th, Td } from '@/components/ui/table'
 
 type AccessListRow = AccessListEntry & { created_at?: string }
 
@@ -160,42 +162,38 @@ export default function AccessListsPage() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="block text-sm">
               类型
-              <select
+              <Select
                 value={newEntry.type}
                 onChange={(e) => setNewEntry({ ...newEntry, type: e.target.value })}
-                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               >
                 <option value="blacklist">黑名单</option>
                 <option value="whitelist">白名单</option>
-              </select>
+              </Select>
             </label>
             <label className="block text-sm">
               目标
-              <select
+              <Select
                 value={newEntry.target}
                 onChange={(e) => setNewEntry({ ...newEntry, target: e.target.value })}
-                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
               >
                 <option value="ip">IP</option>
                 <option value="email">邮箱</option>
                 <option value="username">用户名</option>
-              </select>
+              </Select>
             </label>
             <label className="block text-sm">
               值
-              <input
+              <Input
                 value={newEntry.value}
                 onChange={(e) => setNewEntry({ ...newEntry, value: e.target.value })}
-                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
                 placeholder="IP/邮箱/用户名"
               />
             </label>
             <label className="block text-sm">
               原因
-              <input
+              <Input
                 value={newEntry.reason}
                 onChange={(e) => setNewEntry({ ...newEntry, reason: e.target.value })}
-                className="mt-1 min-h-touch w-full rounded border border-border px-4 py-2"
                 placeholder="可选"
               />
             </label>
@@ -218,40 +216,40 @@ export default function AccessListsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[48rem] text-sm">
-              <thead className="bg-background text-left text-muted">
+            <Table>
+              <thead className="text-left">
                 <tr>
-                  <th className="px-4 py-3">类型</th>
-                  <th className="px-4 py-3">目标</th>
-                  <th className="px-4 py-3">值</th>
-                  <th className="px-4 py-3">原因</th>
-                  <th className="px-4 py-3">创建时间</th>
-                  <th className="px-4 py-3">操作</th>
+                  <Th>类型</Th>
+                  <Th>目标</Th>
+                  <Th>值</Th>
+                  <Th>原因</Th>
+                  <Th>创建时间</Th>
+                  <Th>操作</Th>
                 </tr>
               </thead>
               <tbody>
                 {entries.map((entry) => (
                   <tr key={entry.id} className="border-t border-border">
-                    <td className="px-4 py-3">
+                    <Td>
                       <Badge tone={entry.type === 'whitelist' ? 'success' : 'danger'}>
                         {entry.type === 'whitelist' ? '白名单' : '黑名单'}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3">{entry.target}</td>
-                    <td className="px-4 py-3 font-mono">{entry.value}</td>
-                    <td className="px-4 py-3">{entry.reason || '-'}</td>
-                    <td className="px-4 py-3 text-muted">
+                    </Td>
+                    <Td>{entry.target}</Td>
+                    <Td className="font-mono">{entry.value}</Td>
+                    <Td>{entry.reason || '-'}</Td>
+                    <Td className="text-muted">
                       {entry.created_at ? new Date(entry.created_at).toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-3">
+                    </Td>
+                    <Td>
                       <Button variant="ghost" onClick={() => handleDelete(entry.id)}>
                         删除
                       </Button>
-                    </td>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
         <div className="flex items-center justify-between border-t border-border p-4 text-sm">

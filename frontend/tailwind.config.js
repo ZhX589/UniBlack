@@ -16,6 +16,16 @@ module.exports = {
         danger: 'var(--danger)',
         warning: 'var(--warning)',
         success: 'var(--success)',
+        'text-body': 'var(--text-body)',
+        'text-secondary': 'var(--text-secondary)',
+        'text-display': 'var(--text-display)',
+        'text-inverse': 'var(--text-inverse)',
+        'text-inverse-muted': 'var(--text-inverse-muted)',
+      },
+      fontFamily: {
+        display: ['var(--font-display)'],
+        body: ['var(--font-body)'],
+        mono: ['var(--font-mono)'],
       },
       borderRadius: {
         DEFAULT: 'var(--radius)',

@@ -12,8 +12,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ErrorState } from '@/components/ui/error-state'
+import { Select } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
+import { Table, Th, Td } from '@/components/ui/table'
 
 const OUTCOMES = [
   { value: 'upheld', label: '维持 (upheld)' },
@@ -90,8 +92,8 @@ export default function AdminAppealsPage() {
         </div>
         <label className="text-sm">
           状态
-          <select
-            className="ml-2 min-h-touch rounded border border-border bg-surface px-2"
+          <Select
+            className="ml-2 inline-flex w-auto"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           >
@@ -99,7 +101,7 @@ export default function AdminAppealsPage() {
             <option value="approved">approved</option>
             <option value="rejected">rejected</option>
             <option value="">全部</option>
-          </select>
+          </Select>
         </label>
       </div>
 
@@ -111,20 +113,20 @@ export default function AdminAppealsPage() {
           <LoadingState />
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
+            <Table>
               <thead>
                 <tr className="border-b border-border">
-                  <th className="py-2 pr-3">事件</th>
-                  <th className="py-2 pr-3">状态</th>
-                  <th className="py-2 pr-3">理由</th>
-                  <th className="py-2 pr-3">outcome</th>
-                  <th className="py-2">操作</th>
+                  <Th className="py-2 pr-3">事件</Th>
+                  <Th className="py-2 pr-3">状态</Th>
+                  <Th className="py-2 pr-3">理由</Th>
+                  <Th className="py-2 pr-3">outcome</Th>
+                  <Th className="py-2">操作</Th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id} className="border-b border-border align-top">
-                    <td className="py-3 pr-3 font-mono text-xs">
+                    <Td className="py-3 pr-3 font-mono text-xs">
                       {item.event_id ? (
                         <Link href={`/events/${item.event_id}`} className="text-primary hover:underline">
                           {item.event_id}
@@ -134,15 +136,15 @@ export default function AdminAppealsPage() {
                       ) : (
                         '—'
                       )}
-                    </td>
-                    <td className="py-3 pr-3">
+                    </Td>
+                    <Td className="py-3 pr-3">
                       <Badge tone={item.status === 'pending' ? 'warning' : item.status === 'approved' ? 'success' : 'neutral'}>
                         {item.status}
                       </Badge>
-                    </td>
-                    <td className="max-w-xs py-3 pr-3 whitespace-pre-wrap">{item.reason}</td>
-                    <td className="py-3 pr-3 text-muted">{item.outcome || '—'}</td>
-                    <td className="py-3">
+                    </Td>
+                    <Td className="max-w-xs py-3 pr-3 whitespace-pre-wrap">{item.reason}</Td>
+                    <Td className="py-3 pr-3 text-muted">{item.outcome || '—'}</Td>
+                    <Td className="py-3">
                       {item.status === 'pending' && (
                         <div className="flex flex-col gap-2">
                           {OUTCOMES.map((o) => (
@@ -159,7 +161,7 @@ export default function AdminAppealsPage() {
                           ))}
                         </div>
                       )}
-                    </td>
+                    </Td>
                   </tr>
                 ))}
                 {items.length === 0 && (
@@ -170,7 +172,7 @@ export default function AdminAppealsPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
       </Panel>
