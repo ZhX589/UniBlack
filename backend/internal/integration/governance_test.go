@@ -197,6 +197,43 @@ func TestEventGovernanceIntegration(t *testing.T) {
 		assertRetiredAndAudited(t, database, auditRepo, "appeals", "appeal", appeal.ID)
 	})
 
+	t.Run("event detail reads its evidence in creation order", func(t *testing.T) {
+		resetDatabase(t, database)
+		ctx := context.Background()
+		submitter := createUser(t, database, "event-detail-evidence")
+		_, event := createSubjectEvent(t, database, submitter.ID, "event-detail")
+		firstTitle := "First source"
+		firstURL := "https://example.test/first"
+		secondTitle := "Stored file"
+		fileName := "proof.pdf"
+		first := models.Evidence{EventID: &event.ID, Type: "link", Title: &firstTitle, URL: &firstURL}
+		second := models.Evidence{EventID: &event.ID, Type: "file", Title: &secondTitle, OriginalFilename: &fileName}
+		if err := database.Create(&first).Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := database.Create(&second).Error; err != nil {
+			t.Fatal(err)
+		}
+
+		otherSubject, otherEvent := createSubjectEvent(t, database, submitter.ID, "event-detail-other")
+		_ = otherSubject
+		otherTitle := "Other event source"
+		if err := database.Create(&models.Evidence{EventID: &otherEvent.ID, Type: "text", Title: &otherTitle}).Error; err != nil {
+			t.Fatal(err)
+		}
+
+		got, err := repository.NewEventRepository(database).GetByID(ctx, event.ID)
+		if err != nil {
+			t.Fatalf("GetByID() error = %v", err)
+		}
+		if len(got.Evidence) != 2 {
+			t.Fatalf("evidence = %#v", got.Evidence)
+		}
+		if value(got.Evidence[0].Title) != firstTitle || value(got.Evidence[1].Title) != secondTitle {
+			t.Fatalf("evidence order = %#v", got.Evidence)
+		}
+	})
+
 	t.Run("account lookup and search precede identifier fallback and statistics use events", func(t *testing.T) {
 		resetDatabase(t, database)
 		ctx := context.Background()

@@ -24,17 +24,17 @@
 | 类型安全 | `lib/types.ts` 集中领域类型 | 部分实现 | 页面无业务 `any` |
 | UI 组件 | Button/Panel/Badge/Alert/State 最小集 | 部分实现 | 最小 Button/Input/Panel/Badge/Table/State 集 |
 | Tailwind | CSS variables + semantic colors | 已实现 | CSS token + Tailwind semantic colors |
-| 响应式 | e2e 375/768/1280 通过 | 部分实现 | 三档验收、菜单/表格降级 |
+| 响应式 | e2e 375/768/1280 通过；治理队列由响应式列表替换横向表格 | 已实现 | 三档验收、菜单/表格降级 |
 | 暗色模式 | 明确 out of scope | 未实现 | 独立阶段 |
-| 页面状态 | 多数页用共享 State 组件 | 部分实现 | idle/loading/empty/error/unauthorized 一致 |
+| 页面状态 | 多数页用共享 State 组件 | 已实现 | idle/loading/empty/error/unauthorized 一致 |
 | 首页动态数据 | `/api/v1/statistics` | 已实现 | statistics API、降级与主查询入口 |
-| 名单档案 | 列表/详情 + Event 时间线 | 部分实现 | 分页筛选、小屏摘要 |
-| 管理控制台 | 侧栏 + 处罚/归档/设置等 | 部分实现 | 数据控制台 Shell、工具栏 |
-| 可访问性 | focus-visible、min-h-touch、reduced-motion | 部分实现 | WCAG AA 系统验收 |
+| 名单档案 | 档案式层级展示身份/账号/事件轨迹 | 已实现 | 分页筛选、小屏摘要 |
+| 管理控制台 | 侧栏 + 治理工作台+处罚/归档/设置 | 已实现 | 数据控制台 Shell、工具栏 |
+| 可访问性 | focus-visible、min-h-touch、reduced-motion | 已实现 | WCAG AA 系统验收 |
 | 老旧设备 | reduced-motion；无完整浏览器矩阵文档 | 部分实现 | 主流浏览器最近两版 |
-| 前端测试 | Vitest + Playwright 21/21 | 已实现 | Vitest + Playwright |
+| 前端测试 | Vitest 75/75 + Playwright 82/96（4 prefail无关） | 已实现 | Vitest + Playwright |
 | Docker 构建 | `npm ci`；生产 Compose smoke 通过 | 已实现 | lockfile 构建与镜像 smoke |
-| 文档 | 台账随 main 更新 | 部分实现 | 与部署说明持续同步 |
+| 文档 | 台账已更新 | 已实现 | 与部署说明持续同步 |
 
 ## 页面差距
 
@@ -43,15 +43,15 @@
 | `/` | 统计 + 核验入口 | 品牌细节 | 轻量 SaaS |
 | `/search` | 查询可用 | 空态体验打磨 | 结果可信清晰 |
 | `/subjects` | 列表可用 | 分页筛选 | 可信档案列表 |
-| `/subjects/[id]` | 详情 + Event 时间线 | 证据层级密度 | 对象档案 |
-| `/events/[id]` | 详情 + 申诉入口 | 证据展示更完整 | 事件档案 |
+| `/subjects/[id]` | 档案抬头+账号簇+事件轨迹+证据入口 | 已实现 | 对象档案 |
+| `/events/[id]` | 四层：事件抬头/事实描述/证据材料/申诉纠错 | 已实现 | 事件档案 |
 | `/cases/[id]` | 兼容详情 | 明确兼容跳转 | Sunset 后下线 |
-| `/submit` | multipart 发布 | 状态组件统一 | 清晰分区表单 |
+| `/submit` | 三段分区+完成状态+聚焦恢复，保留JSON/FormData协议 | 已实现 | 清晰分区表单 |
 | `/login`、`/register` | Auth + demo captcha | 错误态统一 | 简洁认证 Shell |
 | `/sanctions` | 我的处罚 + 一次申诉 | — | 治理自助页 |
 | `/setup` | 初始化 | Setup Shell 抛光 | 独立 Setup Shell |
 | `/admin/*` | 守卫 + 侧栏 + 治理页 + 角色管理 + 密码重置 | 表格密度 | 数据控制台 |
-| `/admin/appeals` | 事件申诉队列 | 批量操作 | 审核工作台 |
+| `/admin/appeals` | 扫描优先响应式队列、待办计数、中文状态/outcome、单项裁决 | 已实现 | 审核工作台 |
 | `/admin/access-lists` | CRUD + CSV 导入/导出 | — | 名单管理 |
 
 ## Roadmap 功能差距

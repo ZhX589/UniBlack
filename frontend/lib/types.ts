@@ -24,6 +24,10 @@ export type Evidence = {
   description?: string | null
   url?: string | null
   sha256?: string | null
+  original_filename?: string | null
+  file_size?: number | null
+  mime_type?: string | null
+  created_at?: string
 }
 
 export type EventItem = {
@@ -96,3 +100,25 @@ export type Pagination = {
   page_size: number
   total: number
 }
+
+// --- Publish API boundary types (Task 4) -----------------------------------
+// These types describe the JSON payload accepted by `POST /api/subjects/publish`
+// and do not include binary file bodies (those go through multipart form fields).
+// See backend/internal/service/event.go `PublishSubjectRequest` for the contract.
+
+export type PublishAccountInput = { platform: string; username: string; account_id: string }
+export type PublishEventInput = { title: string; details: string; severity: number }
+export type PublishTextEvidenceInput = { event_index: number; title: string; text: string }
+export type PublishLinkEvidenceInput = { event_index: number; title: string; description: string; url: string }
+export type PublishFileEvidenceInput = { event_index: number; title: string; filename: string; field: string }
+export type PublishSubjectPayload = {
+  display_name: string
+  accounts: PublishAccountInput[]
+  events: PublishEventInput[]
+  text_evidence: PublishTextEvidenceInput[]
+  link_evidence: PublishLinkEvidenceInput[]
+  file_evidence: PublishFileEvidenceInput[]
+  verification_code: string
+  captcha_token: string
+}
+export type PublishSubjectResponse = { public_id: string }
