@@ -1,5 +1,10 @@
 # UniBlack Product Experience Deepening Design
 
+> [!NOTE]
+> This document may not reflect the current implementation.
+> See the final report for up-to-date state:
+> [Final Report](../reports/product-experience-deepening.md)
+
 ## [S1] Problem
 
 UniBlack 已具备对象、账号、事件、证据、申诉、处罚和管理闭环，近期也完成了磨砂玻璃 Shell 与基础视觉系统。当前主要差距不再是功能缺失，而是核心信息尚未形成统一、可扫描、可追溯的产品语言：公开对象与事件详情仍以通用 Panel 堆叠内容，治理队列缺少明确的处理优先级，发布页也未充分解释提交内容最终如何进入公开档案。
