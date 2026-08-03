@@ -12,14 +12,16 @@ UniBlack 是一个可复用的通用云黑系统，支持在线提交&查询、�
 ## 特性
 
 UniBlack 支持：
-- ✅ 在线提交云黑信息
+- ✅ 在线提交云黑信息（三段引导式发布：对象账号 → 事件事实 → 证据与确认）
 - ✅ 支持QQ、微信、B站、抖音、X、Telegram、Discord、Steam、手机号等多平台
 - ✅ 通用查询API（公开接口）
-- ✅ 申诉&审核流程
+- ✅ 可信档案：对象详情档案式层级 + 事件四层展示（事实 / 证据 / 申诉纠错）
+- ✅ 治理工作台：响应式申诉队列、待办计数、中文状态/裁决标签、逐项裁决
+- ✅ 申诉&审核流程（事件申诉 → outcome 裁决 → 更正/撤回/恶意提交）
 - ✅ 完善的用户系统（RBAC权限控制）
-- ✅ 证据管理（图片、文件、链接）
+- ✅ 证据管理（图片、文件、链接，只读详情预加载）
 - ✅ 审计日志
-- ✅ 响应式前端
+- ✅ 响应式前端（375 / 768 / 1280 三档，键盘可达，reduced-motion）
 
 ## 快速上手
 
@@ -110,7 +112,7 @@ docker compose -f docker-compose.prod.yml up -d
 | `/api/v1/lookup?platform=&value=` | GET | 按平台查询 |
 | `/api/v1/subjects` | GET | 列出对象 |
 | `/api/v1/subjects/:id` | GET | 对象详情（含公开事件） |
-| `/api/v1/events/:id` | GET | 事件详情（规范读模型） |
+| `/api/v1/events/:id` | GET | 事件详情（含 `evidence` 只读列表，按创建时间序） |
 | `/api/v1/cases/:id` | GET | **遗留**案件读；响应含 Deprecation/Sunset，请迁移到 events |
 | `/api/v1/statistics` | GET | 统计 |
 
@@ -151,6 +153,7 @@ docker compose -f docker-compose.prod.yml up -d
 - `docs/implementation-gap-analysis.md`：全栈实现进度与差距台账（滚动更新）
 - `docs/compose/specs/`：设计规格（规划文档，不随实现改写目标）
 - `docs/compose/plans/`：分阶段实施计划（规划文档）
+- `docs/compose/reports/`：功能交付最终报告（反映当前实现）
 
 ## 开发
 

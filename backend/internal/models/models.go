@@ -106,6 +106,7 @@ type Event struct {
 	CorrectionNote *string    `gorm:"type:text" json:"correction_note,omitempty"`
 	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt      time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	Evidence       []Evidence `gorm:"foreignKey:EventID" json:"evidence,omitempty"`
 }
 
 func (Event) TableName() string { return "events" }

@@ -28,7 +28,12 @@ func NewEventRepository(db *gorm.DB, stores ...storage.Storage) *EventRepository
 
 func (r *EventRepository) GetByID(ctx context.Context, id string) (*models.Event, error) {
 	var event models.Event
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&event).Error
+	err := r.db.WithContext(ctx).
+		Preload("Evidence", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Where("id = ?", id).
+		First(&event).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, ErrEventNotFound
 	}

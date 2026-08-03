@@ -1,12 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/app/providers'
 import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
 import type { Appeal } from '@/lib/types'
+import { appealStatusPresentation, appealOutcomeLabel } from '@/lib/trustworthy-profile'
+import { appealTarget } from './presentation'
 import { Alert } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,63 +17,167 @@ import { ErrorState } from '@/components/ui/error-state'
 import { Select } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
-import { Table, Th, Td } from '@/components/ui/table'
 
 const OUTCOMES = [
-  { value: 'upheld', label: '维持 (upheld)' },
-  { value: 'corrected', label: '更正 (corrected)' },
-  { value: 'withdrawn', label: '撤回 (withdrawn)' },
-  { value: 'malicious_submission', label: '恶意提交 (malicious)' },
+  { value: 'upheld', label: '维持（upheld）' },
+  { value: 'corrected', label: '更正记录（corrected）' },
+  { value: 'withdrawn', label: '撤回（withdrawn）' },
+  { value: 'malicious_submission', label: '恶意提交（malicious_submission）' },
 ] as const
+
+const FILTERS = [
+  { value: 'pending', label: '待处理（pending）' },
+  { value: 'approved', label: '已通过（approved）' },
+  { value: 'rejected', label: '已驳回（rejected）' },
+  { value: '', label: '全部状态' },
+] as const
+
+// List response shape from GET /api/appeals. The page only reads `appeals` for
+// rendering but tracks `total` so the pending count is derived deterministically
+// from the server response instead of locally mutating after an action.
+type AppealListResponse = {
+  appeals?: Appeal[]
+  total?: number
+  page?: number
+  page_size?: number
+}
+
+type Feedback = { tone: 'success' | 'danger'; message: string } | null
 
 export default function AdminAppealsPage() {
   const { status, hasRole } = useAuth()
   const router = useRouter()
   const [items, setItems] = useState<Appeal[]>([])
-  const [filter, setFilter] = useState('pending')
-  const [loading, setLoading] = useState(true)
+  const [total, setTotal] = useState<number | null>(null)
+  // `null` means "pending count not yet known"; the header renders `待处理 — 项`
+  // until the probe/list response fills it in, avoiding a misleading zero.
+  const [pendingTotal, setPendingTotal] = useState<number | null>(null)
+  // Default to the all-status view so the moderator can scan the full queue at
+  // a glance; the pending count in the header always comes from a dedicated
+  // `status=pending&page_size=1` probe so it is authoritative regardless of
+  // which filter is active.
+  const [filter, setFilter] = useState('')
+  const [loadingItems, setLoadingItems] = useState(true)
+  const [loadingPending, setLoadingPending] = useState(false)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [feedback, setFeedback] = useState<Feedback>(null)
   const [busyID, setBusyID] = useState('')
+  // Monotonic request id keyed by filter, used to drop stale responses when the
+  // filter mutates faster than the network returns. (AbortController alone is
+  // not enough because the effect also issues an ancillary pending-count probe.)
+  const listRequestRef = useRef(0)
+  const pendingRequestRef = useRef(0)
 
-  const load = useCallback(async () => {
+  const loadList = useCallback(
+    async (status: string, signal: AbortSignal | undefined, reqId: number) => {
+      setLoadingItems(true)
+      setError('')
+      try {
+        const qs = new URLSearchParams({ page: '1', page_size: '50' })
+        if (status) qs.set('status', status)
+        const data = await apiRequest<AppealListResponse>(`/api/appeals?${qs}`, {
+          auth: true,
+          signal,
+        })
+        // Drop the response if a newer list request has superseded it.
+        if (listRequestRef.current !== reqId) return
+        setItems(data.appeals || [])
+        setTotal(data.total ?? (data.appeals || []).length)
+        // For the pending filter we reuse the list `total` as the pending count,
+        // avoiding a redundant status=pending&page_size=1 probe.
+        if (status === 'pending') setPendingTotal(data.total ?? (data.appeals || []).length)
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (listRequestRef.current !== reqId) return
+        setError(err instanceof ApiError ? err.message : '加载失败')
+      } finally {
+        if (listRequestRef.current === reqId) setLoadingItems(false)
+      }
+    },
+    [],
+  )
+
+  const loadPendingCount = useCallback(
+    async (status: string, signal: AbortSignal | undefined, reqId: number) => {
+      // The pending count is derived from the list response itself for the
+      // pending filter; only other filters need the dedicated probe.
+      if (status === 'pending') {
+        setPendingTotal(null) // will be filled by loadList response
+        return
+      }
+      setLoadingPending(true)
+      try {
+        const data = await apiRequest<AppealListResponse>(
+          `/api/appeals?page=1&page_size=1&status=pending`,
+          { auth: true, signal },
+        )
+        if (pendingRequestRef.current !== reqId) return
+        setPendingTotal(data.total ?? 0)
+        setError('')
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (pendingRequestRef.current !== reqId) return
+        setError(err instanceof ApiError ? err.message : '加载失败')
+      } finally {
+        if (pendingRequestRef.current === reqId) setLoadingPending(false)
+      }
+    },
+    [],
+  )
+
+  const refresh = useCallback(async () => {
     if (status !== 'authenticated') return
-    setLoading(true)
-    setError('')
-    try {
-      const qs = new URLSearchParams({ page: '1', page_size: '50' })
-      if (filter) qs.set('status', filter)
-      const data = await apiRequest<{ appeals?: Appeal[] }>(`/api/appeals?${qs}`, { auth: true })
-      setItems(data.appeals || [])
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : '加载失败')
-    } finally {
-      setLoading(false)
-    }
-  }, [status, filter])
+    const reqId = listRequestRef.current + 1
+    const pendingReqId = pendingRequestRef.current + 1
+    listRequestRef.current = reqId
+    pendingRequestRef.current = pendingReqId
+    const ac = new AbortController()
+    await Promise.all([
+      loadList(filter, ac.signal, reqId),
+      loadPendingCount(filter, ac.signal, pendingReqId),
+    ])
+  }, [status, filter, loadList, loadPendingCount])
+
+  const reloadAfterAction = useCallback(async () => {
+    const reqId = listRequestRef.current + 1
+    const pendingReqId = pendingRequestRef.current + 1
+    listRequestRef.current = reqId
+    pendingRequestRef.current = pendingReqId
+    const ac = new AbortController()
+    await Promise.all([
+      loadList(filter, ac.signal, reqId),
+      loadPendingCount(filter, ac.signal, pendingReqId),
+    ])
+  }, [filter, loadList, loadPendingCount])
 
   useEffect(() => {
     if (status === 'anonymous') router.replace('/login?next=/admin/appeals')
   }, [status, router])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (status !== 'authenticated') return
+    const ac = new AbortController()
+    void refresh()
+    return () => ac.abort()
+  }, [status, refresh])
 
   async function resolve(id: string, outcome: string) {
     const reason = window.prompt(`裁决说明（outcome=${outcome}）`)
     if (reason === null) return
     setBusyID(id)
-    setMessage('')
+    setFeedback(null)
     try {
       await apiRequest(`/api/appeals/${id}/review/resolve`, {
         auth: true,
         json: { outcome, reason: reason.trim() },
       })
-      setMessage('已裁决')
-      await load()
+      setFeedback({ tone: 'success', message: '已裁决' })
+      await reloadAfterAction()
     } catch (err) {
-      setMessage(err instanceof ApiError ? err.message : '裁决失败')
+      setFeedback({
+        tone: 'danger',
+        message: err instanceof ApiError ? err.message : '裁决失败',
+      })
     } finally {
       setBusyID('')
     }
@@ -83,75 +189,117 @@ export default function AdminAppealsPage() {
     return <ErrorState message="403：没有审核权限" />
   }
 
+  const refreshing = loadingItems || loadingPending
+
   return (
     <main className="space-y-6 py-4">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold">事件申诉队列</h1>
-          <p className="mt-2 text-muted">审核 Event 申诉并写入 outcome。处罚申诉请走「处罚」页。</p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">事件申诉工作台</h1>
+        <p className="mt-2 text-muted">逐项核对申诉理由和关联事件，不进行批量裁决。</p>
+        <p className="mt-1 text-sm text-muted">
+          {pendingTotal === null ? '待处理 — 项' : `待处理 ${pendingTotal} 项`}
+        </p>
+      </div>
+
+      {/* Compact tooling area: filter + refresh. Wraps naturally on mobile. */}
+      <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
-          状态
+          <span className="sr-only">状态</span>
           <Select
-            className="ml-2 inline-flex w-auto"
+            className="w-auto min-w-[12rem]"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           >
-            <option value="pending">pending</option>
-            <option value="approved">approved</option>
-            <option value="rejected">rejected</option>
-            <option value="">全部</option>
+            {FILTERS.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
           </Select>
         </label>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => void refresh()}
+          disabled={refreshing}
+        >
+          {refreshing ? '刷新中…' : '刷新队列'}
+        </Button>
       </div>
 
-      {message && <Alert tone={message.includes('失败') ? 'danger' : 'success'}>{message}</Alert>}
+      {feedback && (
+        <Alert tone={feedback.tone === 'success' ? 'success' : 'danger'}>{feedback.message}</Alert>
+      )}
       {error && <ErrorState message={error} />}
 
       <Panel>
-        {loading ? (
+        {refreshing && items.length === 0 ? (
           <LoadingState />
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <thead>
-                <tr className="border-b border-border">
-                  <Th className="py-2 pr-3">事件</Th>
-                  <Th className="py-2 pr-3">状态</Th>
-                  <Th className="py-2 pr-3">理由</Th>
-                  <Th className="py-2 pr-3">outcome</Th>
-                  <Th className="py-2">操作</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr key={item.id} className="border-b border-border align-top">
-                    <Td className="py-3 pr-3 font-mono text-xs">
-                      {item.event_id ? (
-                        <Link href={`/events/${item.event_id}`} className="text-primary hover:underline">
-                          {item.event_id}
-                        </Link>
-                      ) : item.case_id ? (
-                        <span title="legacy case">{item.case_id} (case)</span>
-                      ) : (
-                        '—'
+          <>
+            {items.length === 0 ? (
+              <EmptyState message="当前筛选下无申诉" />
+            ) : (
+              <ul className="space-y-4">
+                {items.map((item) => {
+                  const target = appealTarget(item)
+                  const statusPres = appealStatusPresentation(item.status)
+                  const outcomeLabel = appealOutcomeLabel(item.outcome, true)
+                  return (
+                    <li
+                      key={item.id}
+                      className="space-y-2 rounded border border-border/50 p-3"
+                    >
+                      {/* 1. Event ID link / legacy Case label / unavailable. */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        {target.kind === 'event' ? (
+                          <Link
+                            href={target.href}
+                            className="font-mono text-sm text-primary hover:underline"
+                          >
+                            {target.id}
+                          </Link>
+                        ) : target.kind === 'legacy-case' ? (
+                          <span className="font-mono text-sm text-text-secondary">
+                            {target.id}{' '}
+                            <span className="ml-1 text-xs">（兼容事项 legacy case）</span>
+                          </span>
+                        ) : (
+                          <span className="text-sm text-text-secondary">
+                            未关联事件/事项
+                          </span>
+                        )}
+                        {/* 2. Translated appeal status with raw enum in auditLabel. */}
+                        <Badge tone={statusPres.tone}>{statusPres.auditLabel}</Badge>
+                      </div>
+
+                      {/* 3. Full reason preserved with whitespace-pre-wrap. */}
+                      <div>
+                        <p className="text-xs text-muted">申诉理由</p>
+                        <p className="whitespace-pre-wrap break-words text-sm">{item.reason}</p>
+                      </div>
+
+                      {/* 4. Translated outcome with raw enum + resolution reason. */}
+                      {outcomeLabel && (
+                        <div>
+                          <p className="text-xs text-muted">已有裁决</p>
+                          <p className="text-sm">{outcomeLabel}</p>
+                          {item.resolution_reason && (
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-text-secondary">
+                              {item.resolution_reason}
+                            </p>
+                          )}
+                        </div>
                       )}
-                    </Td>
-                    <Td className="py-3 pr-3">
-                      <Badge tone={item.status === 'pending' ? 'warning' : item.status === 'approved' ? 'success' : 'neutral'}>
-                        {item.status}
-                      </Badge>
-                    </Td>
-                    <Td className="max-w-xs py-3 pr-3 whitespace-pre-wrap">{item.reason}</Td>
-                    <Td className="py-3 pr-3 text-muted">{item.outcome || '—'}</Td>
-                    <Td className="py-3">
+
+                      {/* 5. Four single-item actions only when pending. */}
                       {item.status === 'pending' && (
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-wrap gap-2 pt-1">
                           {OUTCOMES.map((o) => (
                             <Button
                               key={o.value}
                               type="button"
-                              variant="secondary"
+                              variant={o.value === 'malicious_submission' ? 'danger' : 'secondary'}
                               className="justify-start text-xs"
                               disabled={busyID === item.id}
                               onClick={() => resolve(item.id, o.value)}
@@ -161,19 +309,12 @@ export default function AdminAppealsPage() {
                           ))}
                         </div>
                       )}
-                    </Td>
-                  </tr>
-                ))}
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-6">
-                      <EmptyState message="当前筛选下无申诉" />
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </>
         )}
       </Panel>
     </main>
