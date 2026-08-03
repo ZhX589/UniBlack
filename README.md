@@ -23,14 +23,173 @@ UniBlack 支持：
 - ✅ 审计日志
 - ✅ 响应式前端（375 / 768 / 1280 三档，键盘可达，reduced-motion）
 
-## 快速上手
+## 生产部署
 
 ### 前置要求
 
-- [Go](https://go.dev/dl/) (>= 1.22)
-- [Node.js](https://nodejs.org/) (>= 18)
-- [PostgreSQL](https://www.postgresql.org/download/) (>= 14)
-- [Git](https://git-scm.com/)
+服务器仅需 Docker（≥ 24，含 Compose V2）和 Git，无需安装 Go / Node.js / PostgreSQL。
+
+```bash
+docker --version
+docker compose version
+git --version
+```
+
+### 获取代码
+
+```bash
+git clone https://github.com/ZhX589/UniBlack.git
+cd UniBlack
+```
+
+### 配置环境变量
+
+`.env` 已被 gitignore，从生产模板创建：
+
+```bash
+cp .env.production .env
+nano .env
+```
+
+**必改项**（生产环境使用默认值会拒绝启动，由 `config.Validate()` 强制校验）：
+
+| 变量 | 说明 |
+|------|------|
+| `POSTGRES_PASSWORD` | 数据库强密码 |
+| `JWT_SECRET` | JWT 签名密钥（≥ 32 字符） |
+| `REFRESH_SECRET` | Refresh Token 密钥（≥ 32 字符） |
+| `MINIO_ROOT_PASSWORD` | MinIO 对象存储密码 |
+| `API_BASE_URL` | 前端使用的 API 地址（如 `https://api.yourdomain.com`） |
+
+### HTTPS / SSL 配置（生产域名必做）
+
+`nginx/nginx.conf` 默认只监听 HTTP (`:80`)，443 块为注释状态。
+
+```bash
+mkdir -p nginx/ssl
+# 将证书放入 nginx/ssl/cert.pem 和 nginx/ssl/key.pem
+```
+
+编辑 `nginx/nginx.conf`，取消注释 HTTPS server 块并将 `server_name` 改为你的域名，同时启用 80→443 跳转。若仅在内网或 IP 上运行，可保持 HTTP。
+
+### 构建并启动
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+首次构建约 30-60 秒，后端日志正常输出：
+
+```
+Database connected and migrations applied
+Server starting on port 8080
+```
+
+### 服务架构
+
+```
+                           ┌──────────┐
+      :80 / :443           │  nginx   │ (反向代理 + 限速 10r/s)
+  ────────────────────────►│          │
+                           └─┬────┬──┘
+                  /api/      │    │  / 其他
+                    ▼        │    │        ▼
+             ┌─────────┐    │    │   ┌──────────┐
+             │ backend │◄───┘    └──►│ frontend │
+             │   :8080 │            │   :3000  │
+             └───┬──┬──┘            └──────────┘
+         ┌───────┘  └────────┐
+         ▼                   ▼
+   ┌──────────┐        ┌─────────┐
+   │ postgres │        │  minio  │  (证据文件)
+   │  :5432   │        │ :9000   │
+   └──────────┘        └─────────┘
+```
+
+| 服务 | 数据卷 | 对外端口 | 重启策略 |
+|------|--------|----------|----------|
+| postgres | `postgres_data` | 无（仅内网） | `unless-stopped` |
+| minio | `minio_data` | 无（仅内网） | `unless-stopped` |
+| backend | 无（DB 在 PG） | 无（仅内网） | `unless-stopped` |
+| frontend | 无 | 无（仅内网） | `unless-stopped` |
+| nginx | 无 | **80, 443** | `unless-stopped` |
+
+生产 compose 不暴露 PostgreSQL / MinIO / 后端 / 前端的端口，所有流量经 nginx 单入口。
+
+### 首次初始化管理员
+
+生产环境不会自动 seed 管理员。通过 setup 接口创建第一个管理员：
+
+```bash
+# 检查是否需初始化
+curl http://your-domain/api/setup/check
+
+# 创建管理员
+curl -X POST http://your-domain/api/setup/initialize \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","email":"admin@yourdomain.com","password":"your-secure-password"}'
+```
+
+### 数据库迁移
+
+后端每次启动自动执行 golang-migrate（`backend/internal/migrations/` 已打进镜像），无需手动操作。
+
+### 日常运维
+
+```bash
+# 查看状态
+docker compose -f docker-compose.prod.yml ps
+
+# 查看日志
+docker compose -f docker-compose.prod.yml logs -f backend
+
+# 代码更新后重新构建上线
+git pull origin main
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 重启单个服务
+docker compose -f docker-compose.prod.yml restart nginx
+
+# 停止全部
+docker compose -f docker-compose.prod.yml down
+```
+
+### 数据备份
+
+```bash
+# 数据库
+docker compose -f docker-compose.prod.yml exec postgres pg_dump -U uniblack uniblack > backup.sql
+
+# 恢复
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U uniblack uniblack < backup.sql
+
+# 证据文件（Docker 卷）
+docker volume inspect uniblack_minio_data
+```
+
+### 常见问题
+
+| 现象 | 原因 | 解决 |
+|------|------|------|
+| 后端 FATAL: `DATABASE_URL is required` | `.env` 未配 | `nano .env` 补齐变量 |
+| 后端 FATAL: `JWT_SECRET must be configured` | 密钥使用默认值 | 改为 ≥ 32 字符随机串 |
+| nginx 502 Bad Gateway | 后端尚未就绪 | `docker compose logs backend` 检查迁移是否失败 |
+| 上传文件失败 | MinIO bucket 未创建 | `docker compose exec minio mc mb local/uniblack-evidence` |
+
+---
+
+## 开发环境
+
+### 前置要求
+
+| 依赖 | 版本 | 安装 |
+|------|------|------|
+| Go | ≥ 1.22 | [go.dev/dl](https://go.dev/dl/) |
+| Node.js | ≥ 18 | [nodejs.org](https://nodejs.org/) |
+| PostgreSQL | ≥ 14 | `sudo apt install postgresql` 或 `brew install postgresql@14` |
+| Git | 任意 | 系统自带 |
+
+> 开发模式不需要 MinIO —— 后端在未设 `MINIO_ENDPOINT` 时自动使用本地文件存储 (`./uploads`)。
 
 ### 克隆项目
 
@@ -39,19 +198,39 @@ git clone https://github.com/ZhX589/UniBlack.git
 cd UniBlack
 ```
 
+### 数据库
+
+确保 PostgreSQL 已运行，创建用户和数据库：
+
+```bash
+sudo -iu postgres <<'SQL'
+psql -c "CREATE USER uniblack WITH PASSWORD 'uniblack';"
+psql -c "CREATE DATABASE uniblack OWNER uniblack;"
+SQL
+```
+
 ### 启动后端
 
 ```bash
-# 安装依赖并构建
 cd backend
 go mod tidy
 go build -o server ./cmd/server
-
-# 启动服务器（需要先启动 PostgreSQL）
 ./server
 ```
 
-后端将在 http://localhost:8080 启动
+后端在 `http://localhost:8080` 启动。若 PostgreSQL 不在本地或用户名/密码不同，用环境变量覆盖：
+
+```bash
+DATABASE_URL="postgres://user:pass@host:5432/uniblack?sslmode=disable" ./server
+```
+
+启动后输出 `Database connected and migrations applied` 即迁移完成。
+
+**开发模式自动行为**：
+- 管理员账号 `admin@uniblack.local` / `admin123` 自动创建
+- 验证码固定为 `123456`（不走真实 SMTP）
+- 存储使用 `./uploads` 本地目录
+- 人机验证使用内置 Demo 组件
 
 ### 启动前端
 
@@ -62,42 +241,42 @@ npm install
 npm run dev
 ```
 
-前端将在 http://localhost:3000 启动
+前端在 `http://localhost:3000`，热更新。`next.config.js` 内重写 `/api/*` → `http://localhost:8080`，API 请求自动代理到后端，开发时只开 `:3000` 即可。
 
-### 数据库
+### 开发 Compose 快捷启动（不想手动装 PostgreSQL）
 
-确保 PostgreSQL 已启动，然后创建数据库：
-
-```bash
-sudo -iu postgres
-psql -c "CREATE USER uniblack WITH PASSWORD 'uniblack';"
-psql -c "CREATE DATABASE uniblack OWNER uniblack;"
-exit
-```
-
-后端启动时会自动执行数据库迁移。
-
-### Docker 部署（可选）
-
-Docker 仅用于生产部署，详见 `docker-compose.prod.yml`：
+开发 compose 全部服务开箱即用（弱口令，**仅限本地**）：
 
 ```bash
-# 复制环境配置
-cp .env.production .env
-
-# 编辑配置（修改密码等）
-nano .env
-
-# 启动生产环境
-docker compose -f docker-compose.prod.yml up -d
+docker compose up -d
 ```
 
-生产环境包含：
-- PostgreSQL 数据库
-- MinIO 对象存储
-- 后端 API 服务
-- 前端 Web 应用
-- Nginx 反向代理
+暴露端口：后端 `:8080` · 前端 `:3000` · PostgreSQL `:5432` · MinIO Console `:9001`。
+
+也可以只启动数据库，自行跑后端+前端：
+
+```bash
+docker compose up -d postgres
+cd backend && ./server     # 终端 1
+cd frontend && npm run dev  # 终端 2
+```
+
+### 开发常用命令
+
+```bash
+# 后端
+cd backend
+go build ./...          # 编译检查
+go test ./...           # 运行测试
+go vet ./...            # 静态分析
+
+# 前端
+cd frontend
+npm run lint            # ESLint 检查
+npm run typecheck       # TypeScript 类型检查
+npm run test:run        # 运行测试
+npm run build           # 生产构建检查
+```
 
 ## API 文档
 
