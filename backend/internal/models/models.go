@@ -9,6 +9,7 @@ type User struct {
 	ID                         string     `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	Username                   string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"username"`
 	Email                      string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	AuthVersion                int64      `gorm:"not null;default:0" json:"-"`
 	PasswordHash               string     `gorm:"type:varchar(255);not null" json:"-"`
 	AuthProvider               string     `gorm:"type:varchar(50);default:'local'" json:"auth_provider"`
 	ExternalID                 *string    `gorm:"type:varchar(255)" json:"external_id,omitempty"`

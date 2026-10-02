@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -20,6 +21,7 @@ import (
 )
 
 var (
+	ErrInvalidRegistration      = errors.New("invalid registration input")
 	ErrUserNotFound             = errors.New("user not found")
 	ErrInvalidCredentials       = errors.New("invalid credentials")
 	ErrUserInactive             = errors.New("user is inactive")
@@ -64,9 +66,21 @@ type VerificationCodeStore interface {
 	LatestCreatedAt(ctx context.Context, email, purpose string) (time.Time, bool, error)
 }
 
+// AuthUserStore keeps authentication independent of the concrete database adapter.
+type AuthUserStore interface {
+	GetUserByID(context.Context, string) (*models.User, error)
+	GetUserByUsername(context.Context, string) (*models.User, error)
+	GetUserByEmail(context.Context, string) (*models.User, error)
+	CreateUser(context.Context, *models.User) error
+	GetRoleByName(context.Context, string) (*models.Role, error)
+	AssignRole(context.Context, string, string) error
+	UpdateLastLogin(context.Context, string) error
+	GetUserPermissions(context.Context, string) ([]models.Permission, error)
+}
+
 // AuthService handles authentication logic
 type AuthService struct {
-	userRepo       *repository.UserRepository
+	userRepo       AuthUserStore
 	settings       SettingReader
 	accessListRepo AccessListReader
 	verifyRepo     VerificationCodeStore
@@ -76,7 +90,7 @@ type AuthService struct {
 
 // NewAuthService creates a new auth service
 func NewAuthService(
-	userRepo *repository.UserRepository,
+	userRepo AuthUserStore,
 	settings SettingReader,
 	accessListRepo AccessListReader,
 	verifyRepo *repository.VerificationRepository,
@@ -151,6 +165,18 @@ func (s *AuthService) loadMailer(ctx context.Context) mailer.Mailer {
 
 // Register creates a new user
 func (s *AuthService) Register(ctx context.Context, req RegisterRequest, ip string) (*models.User, error) {
+	// Bind does not execute validation tags. Validate before consuming captcha
+	// or email credentials and before performing any persistence.
+	if strings.TrimSpace(req.Username) == "" {
+		return nil, fmt.Errorf("%w: username is required", ErrInvalidRegistration)
+	}
+	address, err := mail.ParseAddress(req.Email)
+	if err != nil || address.Address != req.Email {
+		return nil, fmt.Errorf("%w: invalid email", ErrInvalidRegistration)
+	}
+	if len(req.Password) < 8 || len(req.Password) > 72 {
+		return nil, fmt.Errorf("%w: password must be between 8 and 72 bytes", ErrInvalidRegistration)
+	}
 	var registrationEnabled bool
 	s.opt(ctx, "auth.registration_enabled", &registrationEnabled)
 	// default open when unset
@@ -261,21 +287,64 @@ func (s *AuthService) Login(ctx context.Context, req LoginRequest) (*auth.TokenP
 		roles[i] = role.Name
 	}
 	identity := &auth.SubjectIdentity{
-		UserID:   user.ID,
-		Username: user.Username,
-		Email:    user.Email,
-		Roles:    roles,
-		Provider: s.provider.Name(),
+		UserID:      user.ID,
+		Username:    user.Username,
+		Email:       user.Email,
+		Roles:       roles,
+		Provider:    s.provider.Name(),
+		AuthVersion: user.AuthVersion,
 	}
 	return s.provider.GenerateTokens(ctx, identity)
 }
 
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*auth.TokenPair, error) {
-	return s.provider.RefreshToken(ctx, refreshToken)
+	validator, ok := s.provider.(auth.RefreshIdentityValidator)
+	if !ok {
+		// A provider without refresh validation must fail closed, not issue
+		// tokens from stale or incomplete embedded claims.
+		return nil, auth.ErrInvalidToken
+	}
+	credential, err := validator.ValidateRefreshToken(ctx, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+	identity, err := s.currentIdentity(ctx, credential)
+	if err != nil {
+		return nil, err
+	}
+	return s.provider.GenerateTokens(ctx, identity)
 }
 
 func (s *AuthService) ValidateToken(ctx context.Context, accessToken string) (*auth.SubjectIdentity, error) {
-	return s.provider.ValidateToken(ctx, accessToken)
+	credential, err := s.provider.ValidateToken(ctx, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	return s.currentIdentity(ctx, credential)
+}
+
+func (s *AuthService) currentIdentity(ctx context.Context, credential *auth.SubjectIdentity) (*auth.SubjectIdentity, error) {
+	if credential == nil || credential.UserID == "" || s.userRepo == nil {
+		return nil, auth.ErrInvalidToken
+	}
+	user, err := s.userRepo.GetUserByID(ctx, credential.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("validate current account: %w", err)
+	}
+	if user == nil || !user.IsActive {
+		return nil, ErrUserInactive
+	}
+	if user.AuthVersion != credential.AuthVersion {
+		return nil, auth.ErrInvalidToken
+	}
+	roles := make([]string, len(user.Roles))
+	for i, role := range user.Roles {
+		roles[i] = role.Name
+	}
+	return &auth.SubjectIdentity{
+		UserID: user.ID, Username: user.Username, Email: user.Email,
+		Roles: roles, Provider: credential.Provider, AuthVersion: user.AuthVersion,
+	}, nil
 }
 
 func (s *AuthService) GetUserPermissions(ctx context.Context, userID string) ([]models.Permission, error) {
@@ -459,22 +528,24 @@ func (s *AuthService) ForgotPassword(ctx context.Context, email string) error {
 	if s.passwordReset == nil {
 		return errors.New("password reset not available")
 	}
-	token, userEmail, err := s.passwordReset.CreateResetToken(ctx, email)
-	if err != nil {
-		return err
+	// Check configuration before looking up the account or creating credentials.
+	// Production must never fall back to LogMailer for password recovery.
+	var host string
+	s.opt(ctx, "security.smtp_host", &host)
+	if !isDevelopment() && strings.TrimSpace(host) == "" {
+		return ErrSMTPRequired
 	}
-	if token == "" {
-		// No user found — silently succeed.
-		return nil
-	}
-
-	// Best-effort email delivery.
 	m := s.loadMailer(ctx)
-	_ = m.Send(ctx, mailer.Message{
-		To:      []string{*userEmail},
-		Subject: "密码重置",
-		Body:    "您的密码重置令牌：" + token + "\n\n请在 1 小时内使用。",
-	})
+	if !isDevelopment() {
+		if _, logsCredentials := m.(mailer.LogMailer); logsCredentials {
+			return ErrSMTPRequired
+		}
+	}
+	if err := s.passwordReset.SendResetToken(ctx, email, m); err != nil {
+		// Keep the public response identical for unknown accounts and delivery
+		// failures. Do not log the error: SMTP errors may contain message data.
+		fmt.Println("[password-reset] request failed; credentials omitted")
+	}
 	return nil
 }
 

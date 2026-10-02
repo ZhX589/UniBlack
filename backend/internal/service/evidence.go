@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -19,7 +20,8 @@ import (
 )
 
 var (
-	ErrEvidenceNotFound = errors.New("evidence not found")
+	ErrEvidenceNotFound     = errors.New("evidence not found")
+	ErrEvidenceAccessDenied = errors.New("not allowed to modify this evidence")
 )
 
 const MaxTextEvidenceBytes = 200 * 1024
@@ -128,13 +130,29 @@ func (s *EvidenceService) CreateEvidence(ctx context.Context, req CreateEvidence
 	return evidence, nil
 }
 
+// newAttachmentKey keeps the archive namespace and human-readable numbering,
+// but never uses client numbering as physical object identity. Random identity
+// also isolates compensating deletes from previous and concurrent attachments.
+func newAttachmentKey(subjectPublicID string, eventNumber, evidenceNumber int, ext string) (string, error) {
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return "", fmt.Errorf("generate evidence object identity: %w", err)
+	}
+	key := storage.BuildEvidenceKey(subjectPublicID, eventNumber, evidenceNumber, ext)
+	ext = filepath.Ext(key)
+	return key[:len(key)-len(ext)] + "_" + hex.EncodeToString(nonce[:]) + ext, nil
+}
+
 // CreateEventTextEvidence stores bounded UTF-8 text as a real archive file.
 // It intentionally does not replace the legacy case-based CreateEvidence API.
 func (s *EvidenceService) CreateEventTextEvidence(ctx context.Context, eventID, subjectPublicID string, eventNumber, evidenceNumber int, text, title, uploadedBy string) (*models.Evidence, error) {
 	if err := validateTextEvidence(text); err != nil {
 		return nil, err
 	}
-	key := storage.BuildEvidenceKey(subjectPublicID, eventNumber, evidenceNumber, ".txt")
+	key, err := newAttachmentKey(subjectPublicID, eventNumber, evidenceNumber, ".txt")
+	if err != nil {
+		return nil, err
+	}
 	content := []byte(text)
 	sum := sha256.Sum256(content)
 	if _, err := s.storage.Upload(ctx, key, bytes.NewReader(content), "text/plain; charset=utf-8"); err != nil {
@@ -170,7 +188,10 @@ func (s *EvidenceService) CreateEventFileEvidence(ctx context.Context, eventID, 
 		return nil, fmt.Errorf("file size out of range")
 	}
 	ext := filepath.Ext(fileName)
-	key := storage.BuildEvidenceKey(subjectPublicID, eventNumber, evidenceNumber, ext)
+	key, err := newAttachmentKey(subjectPublicID, eventNumber, evidenceNumber, ext)
+	if err != nil {
+		return nil, err
+	}
 	hasher := sha256.New()
 	tee := io.TeeReader(file, hasher)
 	if _, err := s.storage.Upload(ctx, key, tee, getContentType(ext)); err != nil {
@@ -266,11 +287,16 @@ func (s *EvidenceService) GetEvidenceByCaseID(ctx context.Context, caseID string
 	return s.evidenceRepo.GetEvidenceByCaseID(ctx, caseID)
 }
 
-// DeleteEvidence deletes evidence.
-func (s *EvidenceService) DeleteEvidence(ctx context.Context, id string) error {
+// DeleteEvidence deletes evidence. Only the original submitter or a governance
+// role (admin/moderator) may remove it; an empty actor is never granted write
+// access to another submitter's record.
+func (s *EvidenceService) DeleteEvidence(ctx context.Context, id, actorID string, roles []string) error {
 	evidence, err := s.evidenceRepo.GetEvidenceByID(ctx, id)
 	if err != nil {
 		return err
+	}
+	if !canManageEvidence(evidence, actorID, roles) {
+		return ErrEvidenceAccessDenied
 	}
 	if evidence.StorageKey != nil {
 		if err := s.storage.Delete(ctx, *evidence.StorageKey); err != nil {

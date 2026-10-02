@@ -81,7 +81,17 @@ func (r *UserRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 
 // UpdateUser updates a user
 func (r *UserRepository) UpdateUser(ctx context.Context, user *models.User) error {
-	return r.db.WithContext(ctx).Save(user).Error
+	// This command edits profile fields only. Saving a previously loaded whole
+	// row could restore an old password/auth_version during a concurrent reset.
+	result := r.db.WithContext(ctx).Model(&models.User{}).Where("id = ?", user.ID).
+		Updates(map[string]interface{}{"username": user.Username, "email": user.Email})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 // UpdateLastLogin updates the last login time

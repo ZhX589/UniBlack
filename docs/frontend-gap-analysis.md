@@ -32,7 +32,7 @@
 | 管理控制台 | 侧栏 + 治理工作台+处罚/归档/设置 | 已实现 | 数据控制台 Shell、工具栏 |
 | 可访问性 | focus-visible、min-h-touch、reduced-motion | 已实现 | WCAG AA 系统验收 |
 | 老旧设备 | reduced-motion；无完整浏览器矩阵文档 | 部分实现 | 主流浏览器最近两版 |
-| 前端测试 | Vitest 75/75 + Playwright 82/96（4 prefail无关） | 已实现 | Vitest + Playwright |
+| 前端测试 | 历史报告：Vitest 75/75；Playwright 82/96，剩余用例未形成完整通过证据 | 部分实现 | Vitest + Playwright 全矩阵通过；失败原因须复现，不能标记为“无关”豁免 |
 | Docker 构建 | `npm ci`；生产 Compose smoke 通过 | 已实现 | lockfile 构建与镜像 smoke |
 | 文档 | 台账已更新 | 已实现 | 与部署说明持续同步 |
 
@@ -65,14 +65,18 @@
 | Phase 9 深色模式 | 未实现 | Phase 12 out of scope |
 | Phase 9 响应式 | 部分实现 | e2e 三档有证据；表格降级可再加强 |
 | Phase 10 OAuth | 仅配置预留 | 无 provider 登录流程 |
-| Phase 11 用户角色/重置密码 | 未完整实现 | 列表与启停为主 |
-| Phase 11 名单批量导入导出 | 对象归档 ZIP 已有 | 用户名单批量 CSV 等未做 |
+| Phase 11 用户角色/重置密码 | 已有管理功能；自助流程待完善 | admin/users 已支持角色分配/移除、管理员重置密码；自助找回页面仍需核验 |
+| Phase 11 名单批量导入导出 | 已有 CSV 和对象归档 ZIP | admin/access-lists 支持 CSV 导入/导出；模板与错误行号提示待完善 |
 
 ## 本轮范围
 
 纳入 Phase 12：动态 Shell、Auth/Settings/API 架构、RBAC 导航、管理信息架构、Tailwind 设计系统、基础页面重塑、响应式、测试和部署构建。
 
 不纳入：后端认证协议迁移、通用 CMS、任意后端菜单、完整深色模式、OAuth、HttpOnly Cookie 迁移。
+
+## 2026-10-02 本轮验证
+
+最新 `npm run test:run`（11 文件、100/100）、`npm run typecheck`、`npm run lint`、`npm run build` 均通过。已修 search/lookup 乱序、管理队列列表/计数错误串扰和 Event 历史失败误显示空记录，新增 6 个可控 Promise 回归。第四批隔离密钥编辑/展示并清空成功草稿，安全开关中文可访问名称，新增 8 个 settings RTL 回归。第五批修复会话归属401、bootstrap续期、single-flight安全读重试，11项延迟回归通过；写请求不自动重放。完整 Playwright 与生产 Compose 未重跑；历史 82/96 不应当成全矩阵完成证据。细节及后端修复限制见 [审计修复进度](<compose/reports/2026-10-02-audit-fixes-progress.md>)。
 
 ## 更新规则
 

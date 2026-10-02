@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
@@ -204,6 +205,7 @@ func (h *PublicAPIHandler) GetStatistics(c echo.Context) error {
 func (h *PublicAPIHandler) ListSubjects(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	status := c.QueryParam("status")
 
 	subjects, total, err := h.subjectService.ListSubjects(c.Request().Context(), page, pageSize, status)

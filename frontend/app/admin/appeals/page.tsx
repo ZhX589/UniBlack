@@ -60,95 +60,53 @@ export default function AdminAppealsPage() {
   const [loadingItems, setLoadingItems] = useState(true)
   const [loadingPending, setLoadingPending] = useState(false)
   const [error, setError] = useState('')
+  const [pendingError, setPendingError] = useState('')
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [busyID, setBusyID] = useState('')
-  // Monotonic request id keyed by filter, used to drop stale responses when the
-  // filter mutates faster than the network returns. (AbortController alone is
-  // not enough because the effect also issues an ancillary pending-count probe.)
-  const listRequestRef = useRef(0)
-  const pendingRequestRef = useRef(0)
-
-  const loadList = useCallback(
-    async (status: string, signal: AbortSignal | undefined, reqId: number) => {
-      setLoadingItems(true)
-      setError('')
-      try {
-        const qs = new URLSearchParams({ page: '1', page_size: '50' })
-        if (status) qs.set('status', status)
-        const data = await apiRequest<AppealListResponse>(`/api/appeals?${qs}`, {
-          auth: true,
-          signal,
-        })
-        // Drop the response if a newer list request has superseded it.
-        if (listRequestRef.current !== reqId) return
-        setItems(data.appeals || [])
-        setTotal(data.total ?? (data.appeals || []).length)
-        // For the pending filter we reuse the list `total` as the pending count,
-        // avoiding a redundant status=pending&page_size=1 probe.
-        if (status === 'pending') setPendingTotal(data.total ?? (data.appeals || []).length)
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        if (listRequestRef.current !== reqId) return
-        setError(err instanceof ApiError ? err.message : '加载失败')
-      } finally {
-        if (listRequestRef.current === reqId) setLoadingItems(false)
-      }
-    },
-    [],
-  )
-
-  const loadPendingCount = useCallback(
-    async (status: string, signal: AbortSignal | undefined, reqId: number) => {
-      // The pending count is derived from the list response itself for the
-      // pending filter; only other filters need the dedicated probe.
-      if (status === 'pending') {
-        setPendingTotal(null) // will be filled by loadList response
-        return
-      }
-      setLoadingPending(true)
-      try {
-        const data = await apiRequest<AppealListResponse>(
-          `/api/appeals?page=1&page_size=1&status=pending`,
-          { auth: true, signal },
-        )
-        if (pendingRequestRef.current !== reqId) return
-        setPendingTotal(data.total ?? 0)
-        setError('')
-      } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        if (pendingRequestRef.current !== reqId) return
-        setError(err instanceof ApiError ? err.message : '加载失败')
-      } finally {
-        if (pendingRequestRef.current === reqId) setLoadingPending(false)
-      }
-    },
-    [],
-  )
+  const requestRef = useRef<{ generation: number; controller?: AbortController }>({ generation: 0 })
+  const cancelRequests = useCallback(() => {
+    requestRef.current.generation += 1
+    requestRef.current.controller?.abort()
+  }, [])
 
   const refresh = useCallback(async () => {
     if (status !== 'authenticated') return
-    const reqId = listRequestRef.current + 1
-    const pendingReqId = pendingRequestRef.current + 1
-    listRequestRef.current = reqId
-    pendingRequestRef.current = pendingReqId
-    const ac = new AbortController()
+    cancelRequests()
+    const controller = new AbortController()
+    const generation = requestRef.current.generation
+    requestRef.current.controller = controller
+    const current = () => !controller.signal.aborted && requestRef.current.generation === generation
+    setBusyID('')
+    setLoadingItems(true)
+    setLoadingPending(true)
+    setItems([])
+    setTotal(null)
+    setPendingTotal(null)
+    setError('')
+    setPendingError('')
+    const qs = new URLSearchParams({ page: '1', page_size: '50' })
+    if (filter) qs.set('status', filter)
     await Promise.all([
-      loadList(filter, ac.signal, reqId),
-      loadPendingCount(filter, ac.signal, pendingReqId),
+      apiRequest<AppealListResponse>(`/api/appeals?${qs}`, { auth: true, signal: controller.signal })
+        .then((data) => {
+          if (!current()) return
+          setItems(data.appeals || [])
+          setTotal(data.total ?? (data.appeals || []).length)
+        })
+        .catch((err) => {
+          if (current()) setError(err instanceof ApiError ? err.message : '申诉列表加载失败')
+        })
+        .finally(() => { if (current()) setLoadingItems(false) }),
+      apiRequest<AppealListResponse>('/api/appeals?page=1&page_size=1&status=pending', { auth: true, signal: controller.signal })
+        .then((data) => {
+          if (current()) setPendingTotal(data.total ?? 0)
+        })
+        .catch((err) => {
+          if (current()) setPendingError(err instanceof ApiError ? err.message : '待处理计数加载失败')
+        })
+        .finally(() => { if (current()) setLoadingPending(false) }),
     ])
-  }, [status, filter, loadList, loadPendingCount])
-
-  const reloadAfterAction = useCallback(async () => {
-    const reqId = listRequestRef.current + 1
-    const pendingReqId = pendingRequestRef.current + 1
-    listRequestRef.current = reqId
-    pendingRequestRef.current = pendingReqId
-    const ac = new AbortController()
-    await Promise.all([
-      loadList(filter, ac.signal, reqId),
-      loadPendingCount(filter, ac.signal, pendingReqId),
-    ])
-  }, [filter, loadList, loadPendingCount])
+  }, [status, filter, cancelRequests])
 
   useEffect(() => {
     if (status === 'anonymous') router.replace('/login?next=/admin/appeals')
@@ -156,14 +114,14 @@ export default function AdminAppealsPage() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    const ac = new AbortController()
     void refresh()
-    return () => ac.abort()
-  }, [status, refresh])
+    return cancelRequests
+  }, [status, refresh, cancelRequests])
 
   async function resolve(id: string, outcome: string) {
     const reason = window.prompt(`裁决说明（outcome=${outcome}）`)
     if (reason === null) return
+    const generation = requestRef.current.generation
     setBusyID(id)
     setFeedback(null)
     try {
@@ -171,15 +129,17 @@ export default function AdminAppealsPage() {
         auth: true,
         json: { outcome, reason: reason.trim() },
       })
+      if (requestRef.current.generation !== generation) return
       setFeedback({ tone: 'success', message: '已裁决' })
-      await reloadAfterAction()
+      await refresh()
     } catch (err) {
+      if (requestRef.current.generation !== generation) return
       setFeedback({
         tone: 'danger',
         message: err instanceof ApiError ? err.message : '裁决失败',
       })
     } finally {
-      setBusyID('')
+      if (requestRef.current.generation === generation) setBusyID('')
     }
   }
 
@@ -230,14 +190,16 @@ export default function AdminAppealsPage() {
       {feedback && (
         <Alert tone={feedback.tone === 'success' ? 'success' : 'danger'}>{feedback.message}</Alert>
       )}
-      {error && <ErrorState message={error} />}
+      {pendingError && <ErrorState message={`待处理计数：${pendingError}`} />}
 
       <Panel>
-        {refreshing && items.length === 0 ? (
+        {loadingItems ? (
           <LoadingState />
+        ) : error ? (
+          <ErrorState message={error} />
         ) : (
           <>
-            {items.length === 0 ? (
+            {total !== null && items.length === 0 ? (
               <EmptyState message="当前筛选下无申诉" />
             ) : (
               <ul className="space-y-4">

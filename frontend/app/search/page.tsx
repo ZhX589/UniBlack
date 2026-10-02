@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { apiRequest } from '@/lib/api'
 import { ApiError } from '@/lib/api-error'
@@ -25,59 +25,64 @@ export default function SearchPage() {
   const [mode, setMode] = useState<SearchMode>(initial ? 'loading' : 'idle')
   const [error, setError] = useState('')
 
-  async function runSearch(value: string) {
+  const requestRef = useRef<{ generation: number; controller?: AbortController }>({ generation: 0 })
+
+  const cancelRequest = useCallback(() => {
+    requestRef.current.generation += 1
+    requestRef.current.controller?.abort()
+  }, [])
+
+  const runQuery = useCallback(async (value: string, lookupPlatform?: string) => {
+    cancelRequest()
+    const controller = new AbortController()
+    const generation = requestRef.current.generation
+    requestRef.current.controller = controller
+    const current = () => !controller.signal.aborted && requestRef.current.generation === generation
     setMode('loading')
     setError('')
     try {
-      const data = await apiRequest<{ results?: Subject[] }>(`/api/v1/search?q=${encodeURIComponent(value)}`)
-      const rows = data.results || []
+      const rows = lookupPlatform === undefined
+        ? (await apiRequest<{ results?: Subject[] }>(`/api/v1/search?q=${encodeURIComponent(value)}`, { signal: controller.signal })).results || []
+        : [await apiRequest<Subject>(`/api/v1/lookup?platform=${lookupPlatform}&value=${encodeURIComponent(value)}`, { signal: controller.signal })]
+      if (!current()) return
       setResults(rows)
       setMode(rows.length ? 'success' : 'empty')
     } catch (err) {
+      if (!current()) return
       setResults([])
-      setError(err instanceof ApiError ? err.message : '查询失败')
-      setMode('error')
-    }
-  }
-
-  async function runLookup(value: string) {
-    setMode('loading')
-    setError('')
-    try {
-      const data = await apiRequest<Subject>(`/api/v1/lookup?platform=${platform}&value=${encodeURIComponent(value)}`)
-      setResults([data])
-      setMode('success')
-    } catch (err) {
-      setResults([])
-      if (err instanceof ApiError && err.status === 404) {
+      if (lookupPlatform !== undefined && err instanceof ApiError && err.status === 404) {
         setMode('empty')
         return
       }
-      setError(err instanceof ApiError ? err.message : '精确查询失败')
+      setError(err instanceof ApiError ? err.message : '查询失败')
       setMode('error')
     }
-  }
+  }, [cancelRequest])
 
   useEffect(() => {
-    if (initial.trim()) {
-      setQuery(initial)
-      void runSearch(initial.trim())
+    setQuery(initial)
+    if (initial.trim()) void runQuery(initial.trim())
+    else {
+      cancelRequest()
+      setResults([])
+      setError('')
+      setMode('idle')
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initial])
+    return cancelRequest
+  }, [initial, runQuery, cancelRequest])
 
   function onSearch(event: FormEvent) {
     event.preventDefault()
     const value = query.trim()
     if (!value) return
-    void runSearch(value)
+    void runQuery(value)
   }
 
   function onLookup(event: FormEvent) {
     event.preventDefault()
     const value = query.trim()
     if (!value) return
-    void runLookup(value)
+    void runQuery(value, platform)
   }
 
   return (

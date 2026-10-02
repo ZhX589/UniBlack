@@ -9,6 +9,7 @@ module.exports = {
         foreground: 'var(--foreground)',
         muted: 'var(--muted)',
         border: 'var(--border)',
+        focus: 'var(--focus)',
         primary: {
           DEFAULT: 'var(--primary)',
           foreground: 'var(--primary-foreground)',

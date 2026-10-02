@@ -281,30 +281,45 @@ export default function SubmitPage() {
 
           {accounts.map((a, i) => (
             <div className="mt-3 flex flex-col gap-2 md:flex-row" key={i}>
-              <Input
-                className="md:w-28"
-                value={a.platform}
-                onChange={(e) =>
-                  setAccounts(accounts.map((x, j) => (j === i ? { ...x, platform: e.target.value } : x)))
-                }
-                aria-label={`平台 ${i + 1}`}
-              />
-              <Input
-                className="flex-1"
-                placeholder="用户名"
-                value={a.username}
-                onChange={(e) =>
-                  setAccounts(accounts.map((x, j) => (j === i ? { ...x, username: e.target.value } : x)))
-                }
-              />
-              <Input
-                className="flex-1"
-                placeholder="账号 ID"
-                value={a.account_id}
-                onChange={(e) =>
-                  setAccounts(accounts.map((x, j) => (j === i ? { ...x, account_id: e.target.value } : x)))
-                }
-              />
+              <div className="md:w-28">
+                <label htmlFor={`publish-account-platform-${i}`} className="block text-sm font-medium">
+                  平台 {i + 1}
+                </label>
+                <Input
+                  id={`publish-account-platform-${i}`}
+                  value={a.platform}
+                  onChange={(e) =>
+                    setAccounts(accounts.map((x, j) => (j === i ? { ...x, platform: e.target.value } : x)))
+                  }
+                  aria-label={`平台 ${i + 1}`}
+                />
+              </div>
+              <div className="flex-1">
+                <label htmlFor={`publish-account-username-${i}`} className="block text-sm font-medium">
+                  用户名 {i + 1}
+                </label>
+                <Input
+                  id={`publish-account-username-${i}`}
+                  placeholder="用户名"
+                  value={a.username}
+                  onChange={(e) =>
+                    setAccounts(accounts.map((x, j) => (j === i ? { ...x, username: e.target.value } : x)))
+                  }
+                />
+              </div>
+              <div className="flex-1">
+                <label htmlFor={`publish-account-id-${i}`} className="block text-sm font-medium">
+                  账号 ID {i + 1}
+                </label>
+                <Input
+                  id={`publish-account-id-${i}`}
+                  placeholder="账号 ID"
+                  value={a.account_id}
+                  onChange={(e) =>
+                    setAccounts(accounts.map((x, j) => (j === i ? { ...x, account_id: e.target.value } : x)))
+                  }
+                />
+              </div>
             </div>
           ))}
           <Button
@@ -343,7 +358,11 @@ export default function SubmitPage() {
 
           {events.map((v, i) => (
             <div className="mt-3 space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0" key={i}>
+              <label htmlFor={`publish-event-title-${i}`} className="block text-sm font-medium">
+                事件标题 {i + 1}
+              </label>
               <Input
+                id={`publish-event-title-${i}`}
                 required
                 placeholder="事件标题"
                 value={v.title}
@@ -351,7 +370,11 @@ export default function SubmitPage() {
                   setEvents(events.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))
                 }
               />
+              <label htmlFor={`publish-event-details-${i}`} className="block text-sm font-medium">
+                事件详情 {i + 1}
+              </label>
               <Textarea
+                id={`publish-event-details-${i}`}
                 required
                 placeholder="事件详情"
                 value={v.details}
@@ -361,7 +384,7 @@ export default function SubmitPage() {
               />
               <div>
                 <label htmlFor={`publish-severity-${i}`} className="block text-sm font-medium">
-                  严重级别
+                  严重级别 {i + 1}
                 </label>
                 <Select
                   id={`publish-severity-${i}`}
@@ -426,7 +449,7 @@ export default function SubmitPage() {
               </h3>
 
               <label htmlFor={`publish-text-${i}`} className="mt-2 block text-sm">
-                文本证据
+                文本证据 {i + 1}
               </label>
               <Textarea
                 id={`publish-text-${i}`}
@@ -440,7 +463,7 @@ export default function SubmitPage() {
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 <div>
                   <label htmlFor={`link-title-${i}`} className="block text-sm">
-                    链接标题
+                    链接标题 {i + 1}
                   </label>
                   <Input
                     id={`link-title-${i}`}
@@ -453,7 +476,7 @@ export default function SubmitPage() {
                 </div>
                 <div>
                   <label htmlFor={`link-url-${i}`} className="block text-sm">
-                    链接 URL
+                    链接 URL {i + 1}
                   </label>
                   <Input
                     id={`link-url-${i}`}
@@ -468,7 +491,7 @@ export default function SubmitPage() {
 
               <div className="mt-2">
                 <label htmlFor={`file-${i}`} className="block text-sm">
-                  文件证据
+                  文件证据 {i + 1}
                 </label>
                 <Input
                   id={`file-${i}`}
@@ -498,12 +521,17 @@ export default function SubmitPage() {
           {/* Verification controls — only when settings demand them */}
           {(requirementsReady && requirements.emailVerification) && (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-              <Input
-                className="min-w-0 flex-1"
-                placeholder="邮箱验证码（开发环境 123456）"
-                value={verificationCode}
-                onChange={(e) => setVerificationCode(e.target.value)}
-              />
+              <div className="min-w-0 flex-1">
+                <label htmlFor="publish-verification-code" className="block text-sm font-medium">
+                  邮箱验证码
+                </label>
+                <Input
+                  id="publish-verification-code"
+                  placeholder="邮箱验证码（开发环境 123456）"
+                  value={verificationCode}
+                  onChange={(e) => setVerificationCode(e.target.value)}
+                />
+              </div>
               <Button type="button" variant="secondary" onClick={sendCode}>
                 发送验证码
               </Button>

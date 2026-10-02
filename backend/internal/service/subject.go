@@ -10,17 +10,32 @@ import (
 )
 
 var (
-	ErrSubjectNotFound  = errors.New("subject not found")
-	ErrIdentifierExists = errors.New("identifier already exists")
+	ErrSubjectNotFound     = repository.ErrSubjectNotFound
+	ErrIdentifierExists    = repository.ErrIdentifierExists
+	ErrSubjectAccessDenied = errors.New("subject access denied")
 )
+
+type SubjectStore interface {
+	CreateSubject(context.Context, *models.Subject) error
+	GetSubjectByID(context.Context, string) (*models.Subject, error)
+	GetSubjectByIdentifier(context.Context, string, string) (*models.Subject, error)
+	ListSubjects(context.Context, int, int, string) ([]models.Subject, int64, error)
+	UpdateSubject(context.Context, *models.Subject) error
+	DeleteSubject(context.Context, string) error
+	SearchSubjects(context.Context, string) ([]models.Subject, error)
+	PublicStatistics(context.Context) (int64, int64, error)
+	AddIdentifier(context.Context, *models.Identifier) error
+	RemoveIdentifier(context.Context, string) error
+	GetIdentifiersBySubjectID(context.Context, string) ([]models.Identifier, error)
+}
 
 // SubjectService handles subject business logic
 type SubjectService struct {
-	subjectRepo *repository.SubjectRepository
+	subjectRepo SubjectStore
 }
 
 // NewSubjectService creates a new subject service
-func NewSubjectService(subjectRepo *repository.SubjectRepository) *SubjectService {
+func NewSubjectService(subjectRepo SubjectStore) *SubjectService {
 	return &SubjectService{subjectRepo: subjectRepo}
 }
 
@@ -109,18 +124,16 @@ func (s *SubjectService) GetSubjectByIdentifier(ctx context.Context, platform, v
 
 // ListSubjects lists subjects with pagination
 func (s *SubjectService) ListSubjects(ctx context.Context, page, pageSize int, status string) ([]models.Subject, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	offset := (page - 1) * pageSize
 	return s.subjectRepo.ListSubjects(ctx, offset, pageSize, status)
 }
 
 // UpdateSubject updates a subject
-func (s *SubjectService) UpdateSubject(ctx context.Context, id string, req UpdateSubjectRequest) (*models.Subject, error) {
+func (s *SubjectService) UpdateSubject(ctx context.Context, id string, req UpdateSubjectRequest, actorID string, roles []string) (*models.Subject, error) {
+	if !CanManageSubject(actorID, roles) {
+		return nil, ErrSubjectAccessDenied
+	}
 	subject, err := s.subjectRepo.GetSubjectByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -147,7 +160,10 @@ func (s *SubjectService) UpdateSubject(ctx context.Context, id string, req Updat
 }
 
 // DeleteSubject deletes a subject
-func (s *SubjectService) DeleteSubject(ctx context.Context, id string) error {
+func (s *SubjectService) DeleteSubject(ctx context.Context, id string, actorID string, roles []string) error {
+	if !CanManageSubject(actorID, roles) {
+		return ErrSubjectAccessDenied
+	}
 	return s.subjectRepo.DeleteSubject(ctx, id)
 }
 
@@ -161,7 +177,10 @@ func (s *SubjectService) PublicStatistics(ctx context.Context) (int64, int64, er
 }
 
 // AddIdentifier adds an identifier to a subject
-func (s *SubjectService) AddIdentifier(ctx context.Context, subjectID string, req IdentifierRequest) (*models.Identifier, error) {
+func (s *SubjectService) AddIdentifier(ctx context.Context, subjectID string, req IdentifierRequest, actorID string, roles []string) (*models.Identifier, error) {
+	if !CanManageSubject(actorID, roles) {
+		return nil, ErrSubjectAccessDenied
+	}
 	// Verify subject exists
 	_, err := s.subjectRepo.GetSubjectByID(ctx, subjectID)
 	if err != nil {
@@ -187,8 +206,25 @@ func (s *SubjectService) AddIdentifier(ctx context.Context, subjectID string, re
 }
 
 // RemoveIdentifier removes an identifier
-func (s *SubjectService) RemoveIdentifier(ctx context.Context, id string) error {
+func (s *SubjectService) RemoveIdentifier(ctx context.Context, id string, actorID string, roles []string) error {
+	if !CanManageSubject(actorID, roles) {
+		return ErrSubjectAccessDenied
+	}
 	return s.subjectRepo.RemoveIdentifier(ctx, id)
+}
+
+// Subjects are shared governance records: creating a submission does not grant
+// unilateral control of risk/status or other contributors' account bindings.
+func CanManageSubject(actorID string, roles []string) bool {
+	if actorID == "" {
+		return false
+	}
+	for _, role := range roles {
+		if role == "admin" || role == "moderator" {
+			return true
+		}
+	}
+	return false
 }
 
 // GetIdentifiersBySubjectID retrieves all identifiers for a subject

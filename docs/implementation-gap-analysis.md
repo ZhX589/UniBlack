@@ -6,7 +6,7 @@
 >
 > **已落地并验证**：迁移 `000006`–`000010`、`UBS_<ULID>`、Account/Event 兼容层、真实 LocalStorage、multipart 多文件+文本同事务发布、Event 独立文件上传、处罚列表/撤销/一次申诉/管理裁决、demo captcha、归档导出/预览/确认导入加固、动态 Auth/Settings Shell 与管理侧栏。
 >
-> **仍未完成（以 `feature/next-development` 为准，见文末 2026-07-21 进度）**：Playwright 浏览器实测、生产 Compose/Nginx smoke、旧 Submission 审核 UI 兼容窗口收束。
+> **阅读校正（2026-10-02）**：下文早期总表/逐项差距是历史阶段快照，不代表当前待办。Playwright 浏览器实测、生产 Compose/Nginx smoke 已有 2026-07-21 历史证据；旧 Submission/Case UI 属于截至 2026-12-31 的有意兼容保留，不应标成未交付。当前修复与验证以文末最新记录为准；历史通过不代表安全/全矩阵验收。
 
 ## 阅读规则
 
@@ -190,3 +190,7 @@
 | Playwright：事件申诉队列 + Case 软跳转 | `e2e/appeals-and-compat.spec.ts` + navigation 扩展 |
 | OAuth / 暗色 / OpenAPI / API Key | **明确不做**（决策锁定） |
 | Case 表物理删除 | **禁止直至 Sunset 检查清单完成** |
+
+## 2026-10-02 审计修复进度
+
+最新实施与真实验证见 [审计修复进度](<compose/reports/2026-10-02-audit-fixes-progress.md>)。已落实刷新身份重载、受限 Event 读取策略复用、附件唯一物理键、发布整批前置验证、注册输入校验、Subject not-found 标识与迁移测试版本定位修正。第二批加入 Subject 治理角色授权、申诉归属/终局退休检查、生产恢复邮件 fail-closed、重置令牌行锁与条件消费。**依赖镜像恢复后 go test ./...、go vet、build 及 service/handler/storage race 全部通过；数据库集成因 DATABASE_URL 未配置明确 SKIP，不能标为 SQL/并发集成完成**。第三批加入 SMTP 全链路 deadline/cancel、处罚裁决与撤销/审计事务、发布/正式裁决快照同事务及 Event 行锁版本串行化；新增 SQL 回归已编译但仍 SKIP。后端最新全量 test/vet/build、含 mailer 的四包 race 通过。前端修复异步乱序及错误/空态，第四批补密钥编辑/展示隔离、安全开关可访问名称与统一分页，新增 000014 auth_version 迁移实现密码重置撤销旧凭证；第五批封Event-target legacy review旁路，Case审批行锁/审计事务且不再清零Case；归档补业务字段/20MiB边界与随机导入操作namespace，前端补会话续期/401归属；最新 unit 100/100、typecheck、lint、build 通过；第六批补处罚 handler 错误映射（typed sentinel→400/403/404/409、500 脱敏不泄漏内部、9 组回归）和发布表单动态标签（12 组 htmlFor/id 配对静态校验通过）；完整 E2E/Compose 未重跑。A03 停用/撤权及密码重置版本撤销单测通过，但迁移实际 up/down、SQL 集成和 refresh family/一次性消费尚未完成；其他未关闭审计项按该报告继续追踪。

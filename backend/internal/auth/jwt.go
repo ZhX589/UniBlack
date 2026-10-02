@@ -54,10 +54,12 @@ func (p *JWTProvider) Verify(ctx context.Context, creds Credentials) (*SubjectId
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID   string   `json:"user_id"`
-	Username string   `json:"username"`
-	Email    string   `json:"email"`
-	Roles    []string `json:"roles"`
+	UserID      string   `json:"user_id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	Roles       []string `json:"roles"`
+	AuthVersion int64    `json:"auth_version"`
+	TokenUse    string   `json:"token_use"`
 	jwt.RegisteredClaims
 }
 
@@ -66,10 +68,12 @@ func (p *JWTProvider) GenerateTokens(ctx context.Context, identity *SubjectIdent
 
 	// Generate access token
 	accessClaims := &Claims{
-		UserID:   identity.UserID,
-		Username: identity.Username,
-		Email:    identity.Email,
-		Roles:    identity.Roles,
+		UserID:      identity.UserID,
+		Username:    identity.Username,
+		Email:       identity.Email,
+		Roles:       identity.Roles,
+		AuthVersion: identity.AuthVersion,
+		TokenUse:    "access",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    p.config.Issuer,
 			Subject:   identity.UserID,
@@ -86,7 +90,9 @@ func (p *JWTProvider) GenerateTokens(ctx context.Context, identity *SubjectIdent
 
 	// Generate refresh token
 	refreshClaims := &Claims{
-		UserID: identity.UserID,
+		UserID:      identity.UserID,
+		AuthVersion: identity.AuthVersion,
+		TokenUse:    "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    p.config.Issuer,
 			Subject:   identity.UserID,
@@ -109,20 +115,23 @@ func (p *JWTProvider) GenerateTokens(ctx context.Context, identity *SubjectIdent
 }
 
 func (p *JWTProvider) RefreshToken(ctx context.Context, refreshToken string) (*TokenPair, error) {
+	identity, err := p.ValidateRefreshToken(ctx, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+	return p.GenerateTokens(ctx, identity)
+}
+
+func (p *JWTProvider) ValidateRefreshToken(ctx context.Context, refreshToken string) (*SubjectIdentity, error) {
 	claims, err := p.validateToken(refreshToken, p.config.RefreshSecret)
 	if err != nil {
 		return nil, err
 	}
 
-	identity := &SubjectIdentity{
-		UserID:   claims.UserID,
-		Username: claims.Username,
-		Email:    claims.Email,
-		Roles:    claims.Roles,
-		Provider: p.Name(),
+	if claims.TokenUse != "" && claims.TokenUse != "refresh" {
+		return nil, ErrInvalidToken
 	}
-
-	return p.GenerateTokens(ctx, identity)
+	return &SubjectIdentity{UserID: claims.UserID, Provider: p.Name(), AuthVersion: claims.AuthVersion}, nil
 }
 
 func (p *JWTProvider) ValidateToken(ctx context.Context, accessToken string) (*SubjectIdentity, error) {
@@ -131,22 +140,26 @@ func (p *JWTProvider) ValidateToken(ctx context.Context, accessToken string) (*S
 		return nil, err
 	}
 
+	if claims.TokenUse != "" && claims.TokenUse != "access" {
+		return nil, ErrInvalidToken
+	}
 	return &SubjectIdentity{
-		UserID:   claims.UserID,
-		Username: claims.Username,
-		Email:    claims.Email,
-		Roles:    claims.Roles,
-		Provider: p.Name(),
+		AuthVersion: claims.AuthVersion,
+		UserID:      claims.UserID,
+		Username:    claims.Username,
+		Email:       claims.Email,
+		Roles:       claims.Roles,
+		Provider:    p.Name(),
 	}, nil
 }
 
 func (p *JWTProvider) validateToken(tokenStr, secret string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+		if token.Method != jwt.SigningMethodHS256 {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(p.config.Issuer), jwt.WithExpirationRequired())
 
 	if err != nil {
 		if errors.Is(err, jwt.ErrTokenExpired) {
@@ -156,7 +169,7 @@ func (p *JWTProvider) validateToken(tokenStr, secret string) (*Claims, error) {
 	}
 
 	claims, ok := token.Claims.(*Claims)
-	if !ok || !token.Valid {
+	if !ok || !token.Valid || claims.UserID == "" || claims.Subject != claims.UserID || claims.AuthVersion < 0 {
 		return nil, ErrInvalidToken
 	}
 

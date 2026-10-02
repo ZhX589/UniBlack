@@ -22,6 +22,31 @@ func TestRegisterFailsClosedWhenBlacklistLookupFails(t *testing.T) {
 	}
 }
 
+func TestRegisterRejectsInvalidInputBeforeDependencies(t *testing.T) {
+	valid := RegisterRequest{Username: "new-user", Email: "new@example.test", Password: "password123"}
+	for _, tc := range []struct {
+		name   string
+		change func(*RegisterRequest)
+	}{
+		{"blank username", func(r *RegisterRequest) { r.Username = "  " }},
+		{"invalid email", func(r *RegisterRequest) { r.Email = "not-an-email" }},
+		{"display-name email", func(r *RegisterRequest) { r.Email = "User <new@example.test>" }},
+		{"empty password", func(r *RegisterRequest) { r.Password = "" }},
+		{"short password", func(r *RegisterRequest) { r.Password = "1234567" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := valid
+			tc.change(&req)
+			// Nil dependencies ensure validation cannot accidentally reach DB,
+			// captcha or verification-code consumption.
+			s := NewAuthService(nil, nil, nil, nil, nil, nil)
+			if _, err := s.Register(context.Background(), req, "192.0.2.1"); err == nil || errors.Is(err, ErrAccessControlUnavailable) {
+				t.Fatalf("input validation error = %v", err)
+			}
+		})
+	}
+}
+
 type failingAccessList struct{}
 
 func (failingAccessList) IsListed(context.Context, string, string, string) (bool, error) {

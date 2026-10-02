@@ -34,7 +34,7 @@
   --text-body: #1e293b;
   --text-secondary: #64748b;
   --text-inverse: #f1f5f9;
-  --text-inverse-muted: #94a3b8;
+  --text-inverse-muted: #b0bfd4;
 
   --font-display: 'MapleMono NF CN', 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   --font-body: 'Inter', 'Noto Sans SC', 'Microsoft YaHei', system-ui, sans-serif;
@@ -76,4 +76,9 @@ body {
 *:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
+}
+
+::selection {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
 }

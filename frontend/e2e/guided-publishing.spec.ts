@@ -73,8 +73,9 @@ test('authenticated task flow: three sections, completion badges, no-evidence te
 
   // Fill verification code → evidence-confirmation verification step done.
   await page.getByPlaceholder('邮箱验证码').fill('123456')
+  const captchaResponse = page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
   await page.getByRole('button', { name: '我不是自动程序' }).click()
-  await page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
+  await captchaResponse
   await expect(page.locator('#publish-section-evidence-confirmation span.inline-flex').getByText('已完成', { exact: true })).toBeVisible({ timeout: 10000 })
 
   // No-evidence recommendation text visible.
@@ -115,8 +116,9 @@ test('client validation: no publish request, focus first broken section, values 
   await page.getByPlaceholder('事件详情').fill('did bad things')
   await page.getByLabel(/严重级别/).selectOption('2')
   await page.getByPlaceholder('邮箱验证码').fill('123456')
+  const captchaResponse = page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
   await page.getByRole('button', { name: '我不是自动程序' }).click()
-  await page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
+  await captchaResponse
 
   // Clear the default platform to make accounts invalid.
   await page.locator('[aria-label="平台 1"]').clear()
@@ -173,11 +175,13 @@ test('json server failure: error visible, focus on evidence section, values pres
   await page.getByPlaceholder('事件详情').fill('details here')
   await page.getByLabel(/严重级别/).selectOption('3')
   await page.getByPlaceholder('邮箱验证码').fill('123456')
+  const captchaResponse = page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
   await page.getByRole('button', { name: '我不是自动程序' }).click()
-  await page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
+  await captchaResponse
 
+  const publishResponse = page.waitForResponse('**/api/subjects/publish', { timeout: 15000 })
   await page.getByRole('button', { name: '确认并公开发布' }).click()
-  await page.waitForResponse('**/api/subjects/publish', { timeout: 15000 })
+  await publishResponse
 
   // Error visible.
   await expect(page.getByText('invalid verification code')).toBeVisible()
@@ -232,8 +236,9 @@ test('multipart publish: file upload shows success page with public ID and link'
   await page.getByPlaceholder('事件详情').fill('test with file evidence')
   await page.getByLabel(/严重级别/).selectOption('2')
   await page.getByPlaceholder('邮箱验证码').fill('123456')
+  const captchaResponse = page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
   await page.getByRole('button', { name: '我不是自动程序' }).click()
-  await page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
+  await captchaResponse
 
   // Attach a file.
   const fileInput = page.locator('input[type="file"]').first()
@@ -243,8 +248,9 @@ test('multipart publish: file upload shows success page with public ID and link'
     buffer: Buffer.from('evidence content'),
   })
 
+  const publishResponse = page.waitForResponse('**/api/subjects/publish', { timeout: 15000 })
   await page.getByRole('button', { name: '确认并公开发布' }).click()
-  await page.waitForResponse('**/api/subjects/publish', { timeout: 15000 })
+  await publishResponse
 
   expect(publishRequested).toBe(true)
 
@@ -286,8 +292,9 @@ test('captcha failure: error in evidence section, inputs preserved, button re-en
   await page.getByLabel(/严重级别/).selectOption('1')
   await page.getByPlaceholder('邮箱验证码').fill('123456')
 
+  const captchaResponse = page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
   await page.getByRole('button', { name: '我不是自动程序' }).click()
-  await page.waitForResponse('**/api/verification/demo/submission', { timeout: 15000 })
+  await captchaResponse
 
   // Error visible in evidence-confirmation section.
   await expect(page.getByText('captcha verification failed').first()).toBeVisible()

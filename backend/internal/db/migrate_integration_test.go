@@ -53,6 +53,23 @@ func TestRunMigrations(t *testing.T) {
 	appealID := insertReturningID(t, database, "INSERT INTO appeals (event_id, reason, status, submitted_by) VALUES (?, 'event-only', 'pending', ?) RETURNING id", eventID, userID)
 
 	m := migrationInstance(t, database, migrationsPath)
+	// Exercise actual rollback of every migration newer than governance.
+	// The guard below specifically belongs to version 11, not latest-1.
+	version, dirty, err := m.Version()
+	if err != nil || dirty || version < 11 {
+		t.Fatalf("latest migration version = %d, dirty = %v, error = %v", version, dirty, err)
+	}
+	if version > 11 {
+		if err := m.Steps(-int(version - 11)); err != nil {
+			t.Fatalf("rollback newer migrations to governance fixture: %v", err)
+		}
+		if err := m.Migrate(version); err != nil {
+			t.Fatalf("reapply newer migrations: %v", err)
+		}
+		if err := m.Migrate(11); err != nil {
+			t.Fatalf("prepare version 11 fixture: %v", err)
+		}
+	}
 	err = m.Steps(-1)
 	if err == nil || !strings.Contains(err.Error(), "cannot downgrade event governance while event-only appeals exist") {
 		t.Fatalf("event-only downgrade error = %v", err)

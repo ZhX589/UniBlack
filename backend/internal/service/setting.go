@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/setting"
@@ -279,12 +280,7 @@ func (s *SystemSettingService) CreateAccessListEntry(ctx context.Context, entry 
 }
 
 func (s *SystemSettingService) ListAccessListEntries(ctx context.Context, page, pageSize int, listType, target string) ([]models.AccessList, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	offset := (page - 1) * pageSize
 	return s.accessListRepo.ListEntries(ctx, offset, pageSize, listType, target)
 }

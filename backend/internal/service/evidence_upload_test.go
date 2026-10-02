@@ -110,17 +110,19 @@ func TestUploadEvidenceDuplicateDeletesNewObjectWithoutCreatingMetadata(t *testi
 
 func TestDeleteEvidenceDeletesStoredTextEvidence(t *testing.T) {
 	key := "subjects/subject-1/events/1/evidence/1.txt"
+	uploader := "uploader-1"
 	repo := &duplicateEvidenceRepository{
 		existing: &models.Evidence{
 			ID:         "evidence-id",
 			Type:       "text",
 			StorageKey: &key,
+			UploadedBy: &uploader,
 		},
 	}
 	store := &recordingStorage{}
 	service := NewEvidenceService(repo, existingCaseRepository{}, store)
 
-	if err := service.DeleteEvidence(context.Background(), "evidence-id"); err != nil {
+	if err := service.DeleteEvidence(context.Background(), "evidence-id", uploader, nil); err != nil {
 		t.Fatal(err)
 	}
 	if store.deletedKey != key {

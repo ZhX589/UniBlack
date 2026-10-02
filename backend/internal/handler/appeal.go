@@ -1,22 +1,36 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
+	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
+type appealRetirementService interface {
+	DeleteAppeal(context.Context, string, string, ...string) error
+}
+
+type appealReviewService interface {
+	ReviewAppeal(context.Context, string, service.ReviewAppealRequest, string) (*models.Appeal, error)
+}
+
 // AppealHandler handles appeal requests
 type AppealHandler struct {
-	appealService *service.AppealService
+	appealService     *service.AppealService
+	retirementService appealRetirementService
+	reviewService     appealReviewService
 }
 
 // NewAppealHandler creates a new appeal handler
 func NewAppealHandler(appealService *service.AppealService) *AppealHandler {
-	return &AppealHandler{appealService: appealService}
+	return &AppealHandler{appealService: appealService, retirementService: appealService, reviewService: appealService}
 }
 
 // CreateAppeal creates a new appeal
@@ -79,6 +93,7 @@ func (h *AppealHandler) GetAppealsByEventID(c echo.Context) error {
 func (h *AppealHandler) ListAppeals(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	status := c.QueryParam("status")
 	submittedBy := c.QueryParam("submitted_by")
 
@@ -106,12 +121,28 @@ func (h *AppealHandler) ReviewAppeal(c echo.Context) error {
 
 	userID, _ := c.Get("user_id").(string)
 
-	appeal, err := h.appealService.ReviewAppeal(c.Request().Context(), id, req, userID)
+	if userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+	if req.Status != "approved" && req.Status != "rejected" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "review status must be approved or rejected"})
+	}
+	appeal, err := h.reviewService.ReviewAppeal(c.Request().Context(), id, req, userID)
 	if err != nil {
-		if err == service.ErrAppealNotFound {
+		switch {
+		case errors.Is(err, service.ErrAppealNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "appeal not found"})
+		case errors.Is(err, service.ErrAppealAlreadyResolved):
+			return c.JSON(http.StatusConflict, map[string]string{"error": "appeal already resolved"})
+		case errors.Is(err, service.ErrAppealResolveRequired):
+			return c.JSON(http.StatusConflict, map[string]string{"error": "event appeals require the formal resolve endpoint"})
+		case errors.Is(err, service.ErrAppealInvalidReview):
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "review status must be approved or rejected"})
+		case errors.Is(err, service.ErrAppealInvalidTarget):
+			return c.JSON(http.StatusConflict, map[string]string{"error": "legacy review requires an existing case target"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to review appeal"})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, appeal)
@@ -130,17 +161,27 @@ func (h *AppealHandler) ResolveAppeal(c echo.Context) error {
 	return c.JSON(http.StatusOK, appeal)
 }
 
-// DeleteAppeal deletes an appeal
+// DeleteAppeal retires an appeal without erasing its history.
 func (h *AppealHandler) DeleteAppeal(c echo.Context) error {
 	id := c.Param("id")
 
 	userID, _ := c.Get("user_id").(string)
+	if userID == "" {
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+	roles, _ := c.Get("roles").([]string)
 
-	if err := h.appealService.DeleteAppeal(c.Request().Context(), id, userID); err != nil {
-		if err == service.ErrAppealNotFound {
+	if err := h.retirementService.DeleteAppeal(c.Request().Context(), id, userID, roles...); err != nil {
+		switch {
+		case errors.Is(err, service.ErrAppealNotFound):
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "appeal not found"})
+		case errors.Is(err, service.ErrAppealForbidden):
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "not permitted to retire this appeal"})
+		case errors.Is(err, service.ErrAppealAlreadyResolved):
+			return c.JSON(http.StatusConflict, map[string]string{"error": "appeal already resolved"})
+		default:
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to retire appeal"})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "appeal deleted"})

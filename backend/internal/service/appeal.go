@@ -4,17 +4,39 @@ import (
 	"context"
 	"errors"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 )
 
 var (
-	ErrAppealNotFound = repository.ErrAppealNotFound
+	ErrAppealNotFound        = repository.ErrAppealNotFound
+	ErrAppealForbidden       = repository.ErrAppealForbidden
+	ErrAppealAlreadyResolved = repository.ErrAppealAlreadyResolved
+	ErrAppealInvalidReview   = repository.ErrAppealInvalidReview
+	ErrAppealResolveRequired = repository.ErrAppealResolveRequired
+	ErrAppealInvalidTarget   = repository.ErrAppealInvalidTarget
 )
+
+// appealRetirementRepository is the minimal persistence boundary for retirement.
+type appealRetirementRepository interface {
+	GetAppealByID(context.Context, string) (*models.Appeal, error)
+	DeleteAppeal(context.Context, string, string, bool) error
+}
+
+type appealRepository interface {
+	appealRetirementRepository
+	CreateAppeal(context.Context, *models.Appeal) error
+	GetAppealsByCaseID(context.Context, string) ([]models.Appeal, error)
+	GetAppealsByEventID(context.Context, string) ([]models.Appeal, error)
+	ListAppeals(context.Context, int, int, string, string) ([]models.Appeal, int64, error)
+	ReviewAppeal(context.Context, string, string, string, string) error
+	ResolveWithConsequences(context.Context, string, string, string, string, string) error
+}
 
 // AppealService handles appeal business logic
 type AppealService struct {
-	appealRepo *repository.AppealRepository
+	appealRepo appealRepository
 	caseRepo   *repository.CaseRepository
 	eventRepo  *repository.EventRepository
 	auditRepo  *repository.AuditLogRepository
@@ -114,40 +136,21 @@ func (s *AppealService) GetAppealsByEventID(ctx context.Context, eventID string)
 
 // ListAppeals lists appeals with pagination
 func (s *AppealService) ListAppeals(ctx context.Context, page, pageSize int, status, submittedBy string) ([]models.Appeal, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	offset := (page - 1) * pageSize
 	return s.appealRepo.ListAppeals(ctx, offset, pageSize, status, submittedBy)
 }
 
 // ReviewAppeal reviews an appeal
 func (s *AppealService) ReviewAppeal(ctx context.Context, id string, req ReviewAppealRequest, reviewedBy string) (*models.Appeal, error) {
-	appeal, err := s.appealRepo.GetAppealByID(ctx, id)
-	if err != nil {
-		return nil, err
+	if req.Status != "approved" && req.Status != "rejected" {
+		return nil, ErrAppealInvalidReview
 	}
-
-	// Update appeal status
+	// Persistence owns the lock, target/state guards and audit transaction.
+	// Do not infer corrected/withdrawn from legacy approved or mutate Case data.
 	if err := s.appealRepo.ReviewAppeal(ctx, id, reviewedBy, req.Status, req.ReviewNotes); err != nil {
 		return nil, err
 	}
-
-	// If appeal approved, update case status (legacy Case path only).
-	if req.Status == "approved" {
-		if appeal.CaseID != nil {
-			if err := s.caseRepo.UpdateCase(ctx, &models.Case{ID: *appeal.CaseID}); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// Create audit log
-	s.createAuditLog(ctx, reviewedBy, "review", "appeal", appeal.ID, nil)
-
 	return s.appealRepo.GetAppealByID(ctx, id)
 }
 
@@ -165,9 +168,42 @@ func (s *AppealService) ResolveAppeal(ctx context.Context, id string, req Resolv
 	return s.appealRepo.GetAppealByID(ctx, id)
 }
 
-// DeleteAppeal retires an appeal from active reads and writes an audit row atomically.
-func (s *AppealService) DeleteAppeal(ctx context.Context, id, deletedBy string) error {
-	return s.appealRepo.DeleteAppeal(ctx, id, deletedBy)
+// DeleteAppeal permits pending owners to withdraw from the active queue, while
+// existing governance roles may retire any state. History is never erased.
+// Roles are supplied explicitly by trusted authentication, never request JSON.
+func (s *AppealService) DeleteAppeal(ctx context.Context, id, actorID string, roles ...string) error {
+	return retireAppeal(ctx, s.appealRepo, id, actorID, roles)
+}
+
+func retireAppeal(ctx context.Context, repo appealRetirementRepository, id, actorID string, roles []string) error {
+	if actorID == "" {
+		return ErrAppealForbidden
+	}
+	appeal, err := repo.GetAppealByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if appeal.DeletedAt != nil {
+		return ErrAppealNotFound
+	}
+	governance := false
+	for _, role := range roles {
+		if role == "admin" || role == "moderator" {
+			governance = true
+			break
+		}
+	}
+	if !governance {
+		if appeal.SubmittedBy == nil || *appeal.SubmittedBy != actorID {
+			return ErrAppealForbidden
+		}
+		if appeal.Status != "pending" || appeal.Outcome != nil || appeal.ReviewedAt != nil {
+			return ErrAppealAlreadyResolved
+		}
+	}
+	// Persistence rechecks owner/state under the same lock as retirement/audit:
+	// a concurrent resolution must not let an owner retire a final decision.
+	return repo.DeleteAppeal(ctx, id, actorID, governance)
 }
 
 // createAuditLog creates an audit log entry

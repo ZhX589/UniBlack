@@ -226,6 +226,24 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		}
 		events = append(events, models.Event{Title: e.Title, Details: e.Details, Severity: severity, Status: "published", OccurredFrom: e.OccurredFrom, OccurredTo: e.OccurredTo, SubmittedBy: &userID})
 	}
+	// Validate the entire batch before any storage side effects. In particular,
+	// a later invalid text entry must not leave earlier uploads orphaned.
+	for _, item := range req.LinkEvidence {
+		if err := item.Validate(len(events)); err != nil {
+			return nil, err
+		}
+	}
+	for _, item := range req.TextEvidence {
+		if err := item.Validate(len(events)); err != nil {
+			return nil, err
+		}
+	}
+	for _, item := range req.FileEvidence {
+		if err := item.Validate(len(events)); err != nil {
+			return nil, err
+		}
+	}
+
 	// Store text/file blobs first. Link evidence is metadata-only.
 	// DB metadata is inserted in the same transaction as subject/accounts/events;
 	// failed DB writes compensate storage.
@@ -240,9 +258,6 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 	}
 
 	for _, item := range req.LinkEvidence {
-		if err := item.Validate(len(events)); err != nil {
-			return nil, err
-		}
 		title := item.Title
 		description := item.Description
 		linkURL := item.URL
@@ -253,9 +268,6 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 	}
 
 	for _, item := range req.TextEvidence {
-		if err := item.Validate(len(events)); err != nil {
-			return nil, err
-		}
 		key := nextEvidenceKey(publicID, item.EventIndex, ".txt", textN, fileN)
 		body := []byte(item.Text)
 		sum := sha256.Sum256(body)
@@ -279,10 +291,6 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 	}
 
 	for _, item := range req.FileEvidence {
-		if err := item.Validate(len(events)); err != nil {
-			cleanup()
-			return nil, err
-		}
 		ext := strings.ToLower(filepath.Ext(item.Filename))
 		key := nextEvidenceKey(publicID, item.EventIndex, ext, textN, fileN)
 		sum := sha256.Sum256(item.Content)
@@ -312,12 +320,8 @@ func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, u
 		cleanup()
 		return nil, err
 	}
-	// Record version history for each created event.
-	if s.versions != nil {
-		for i := range events {
-			_ = s.versions.RecordVersion(ctx, &events[i], "create")
-		}
-	}
+	// Initial snapshots are persisted by PublishWithEvidence in the same
+	// transaction as the event and audit; failures trigger storage compensation.
 	subject.Accounts = accounts
 	subject.Events = events
 	return subject, nil
@@ -349,10 +353,10 @@ func (s *EventService) CanReadEvent(ctx context.Context, eventID, userID string,
 	if err != nil {
 		return nil, err
 	}
-	if event.Status == "published" || event.Status == "corrected" {
+	if EventVisibleTo(event, userID, roles) {
 		return event, nil
 	}
-	return s.CanManageEvent(ctx, eventID, userID, roles)
+	return nil, errors.New("event evidence access denied")
 }
 
 func (s *EventService) SubjectPublicID(ctx context.Context, eventID string) (string, error) {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +15,13 @@ import (
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
-type EventHandler struct{ service *service.EventService }
+type eventService interface {
+	Publish(context.Context, service.PublishSubjectRequest, string) (*models.Subject, error)
+	Get(context.Context, string) (*models.Event, error)
+	GetVersions(context.Context, string) ([]models.EventVersion, error)
+}
+
+type EventHandler struct{ service eventService }
 
 func NewEventHandler(s *service.EventService) *EventHandler { return &EventHandler{service: s} }
 
@@ -35,6 +42,7 @@ func (h *EventHandler) Publish(c echo.Context) error {
 }
 
 func bindPublishRequest(c echo.Context) (service.PublishSubjectRequest, error) {
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, 72<<20)
 	ct := c.Request().Header.Get(echo.HeaderContentType)
 	if strings.HasPrefix(ct, echo.MIMEMultipartForm) {
 		return bindMultipartPublish(c)
@@ -55,6 +63,7 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 	if err != nil {
 		return req, err
 	}
+	defer form.RemoveAll()
 	payloadValues := form.Value["payload"]
 	if len(payloadValues) == 0 {
 		return req, fmt.Errorf("payload is required")
@@ -69,10 +78,13 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 		content []byte
 	}
 	blobs := map[string]fileBlob{}
+	var totalBytes int
+	if len(form.File)>64 { return req, fmt.Errorf("too many evidence files") }
 	for field, headers := range form.File {
 		if len(headers) == 0 {
 			continue
 		}
+		if len(headers)!=1 { return req, fmt.Errorf("duplicate multipart file field: %s",field) }
 		fh := headers[0]
 		src, err := fh.Open()
 		if err != nil {
@@ -86,6 +98,8 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 		if len(content) > service.MaxPublishFileBytes {
 			return req, fmt.Errorf("file too large")
 		}
+		totalBytes += len(content)
+		if totalBytes>64<<20 { return req, fmt.Errorf("total evidence files too large") }
 		blobs[field] = fileBlob{name: fh.Filename, content: content}
 	}
 
@@ -137,24 +151,19 @@ func (h *EventHandler) Get(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
 	}
-	if e.Status != "published" && e.Status != "corrected" {
-		userID, _ := c.Get("user_id").(string)
-		roles, _ := c.Get("roles").([]string)
-		privileged := false
-		for _, role := range roles {
-			if role == "admin" || role == "moderator" {
-				privileged = true
-				break
-			}
-		}
-		if !privileged && (e.SubmittedBy == nil || *e.SubmittedBy != userID) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
-		}
+	if !eventVisibleToRequester(c, e) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
 	}
 	return c.JSON(http.StatusOK, e)
 }
 
 func (h *EventHandler) GetVersions(c echo.Context) error {
+	// Authorize the current event before loading historical snapshots, including
+	// when the version repository is disabled or the history is empty.
+	event, err := h.service.Get(c.Request().Context(), c.Param("id"))
+	if err != nil || !eventVisibleToRequester(c, event) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})
+	}
 	versions, err := h.service.GetVersions(c.Request().Context(), c.Param("id"))
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "event not found"})

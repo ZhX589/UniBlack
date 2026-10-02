@@ -209,12 +209,17 @@ func (h *EvidenceHandler) GetEvidenceByCaseID(c echo.Context) error {
 // DeleteEvidence deletes evidence
 func (h *EvidenceHandler) DeleteEvidence(c echo.Context) error {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
 
-	if err := h.evidenceService.DeleteEvidence(c.Request().Context(), id); err != nil {
+	if err := h.evidenceService.DeleteEvidence(c.Request().Context(), id, userID, roles); err != nil {
 		if err == service.ErrEvidenceNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "evidence not found"})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		if err == service.ErrEvidenceAccessDenied {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "not allowed to delete this evidence"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete evidence"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{"message": "evidence deleted"})

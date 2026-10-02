@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/app/providers'
 import { apiRequest } from '@/lib/api'
@@ -13,16 +13,26 @@ import { Input, Select, Textarea } from '@/components/ui/input'
 import { LoadingState } from '@/components/ui/loading-state'
 import { Panel } from '@/components/ui/panel'
 
+const reservedSecretKeys = [
+  'security.smtp_password',
+  'security.captcha_secret_key',
+  'auth.oauth_github_client_secret',
+]
+const secretMask = '••••••••'
+
 type AdminSettingsResponse = {
+  schema?: Array<{ key: string; secret?: boolean; type?: string }>
   values?: Record<string, unknown>
-  settings?: Array<{ key: string; value: unknown }>
+  settings?: Array<{ key: string; value: unknown; secret?: boolean }>
 }
 
 export default function AdminSettingsPage() {
   const { status } = useAuth()
   const router = useRouter()
-  const [rows, setRows] = useState<Array<{ key: string; value: string }>>([])
+  const [rowCount, setRowCount] = useState(0)
+  // Display values never contain secrets; password drafts live only in SecretField.
   const [map, setMap] = useState<Record<string, unknown>>({})
+  const [secretKeys, setSecretKeys] = useState(() => new Set(reservedSecretKeys))
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('basic')
   const [message, setMessage] = useState('')
@@ -34,25 +44,25 @@ export default function AdminSettingsPage() {
     setError('')
     try {
       const data = await apiRequest<AdminSettingsResponse>('/api/admin/settings', { auth: true })
-      if (data?.values && typeof data.values === 'object') {
-        const values: Record<string, unknown> = {}
-        for (const [k, v] of Object.entries(data.values)) {
-          if (v && typeof v === 'object' && 'redacted' in (v as object)) values[k] = ''
-          else values[k] = v
-        }
-        setMap(values)
-        const flat = Array.isArray(data.settings)
-          ? data.settings.map((row) => ({
-              key: row.key,
-              value: typeof row.value === 'string' ? row.value : JSON.stringify(row.value),
-            }))
-          : []
-        setRows(flat)
-      } else {
-        const flat = flattenAdminSettings(data)
-        setRows(flat)
-        setMap(adminSettingsToMap(flat))
+      const secrets = new Set(reservedSecretKeys)
+      for (const meta of data?.schema ?? []) {
+        if (meta.secret || meta.type === 'secret') secrets.add(meta.key)
       }
+      for (const row of data?.settings ?? []) {
+        if (row.secret) secrets.add(row.key)
+      }
+      const flat = flattenAdminSettings(data)
+      const source = data?.values ?? adminSettingsToMap(flat)
+      const values: Record<string, unknown> = {}
+      for (const [key, value] of Object.entries(source)) {
+        // Redaction metadata and masks are display-only, never editable values.
+        if (value && typeof value === 'object' && 'redacted' in value) secrets.add(key)
+        if (secrets.has(key) || value === secretMask) continue
+        values[key] = value
+      }
+      setSecretKeys(secrets)
+      setRowCount(flat.length)
+      setMap(values)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : '加载配置失败')
     } finally {
@@ -80,7 +90,9 @@ export default function AdminSettingsPage() {
     return v === true || v === 'true'
   }
 
-  const handleSave = async (key: string, value: unknown) => {
+  const handleSave = async (key: string, value: unknown): Promise<boolean> => {
+    // Keep the backend's existing no-change semantics; do not introduce clearing.
+    if (secretKeys.has(key) && (value === '' || value === secretMask)) return false
     setMessage('')
     setError('')
     try {
@@ -89,10 +101,13 @@ export default function AdminSettingsPage() {
         auth: true,
         json: [{ key, value }],
       })
-      setMap((prev) => ({ ...prev, [key]: value }))
+      // Never copy a submitted secret (or a response mask) into generic display state.
+      if (!secretKeys.has(key)) setMap((prev) => ({ ...prev, [key]: value }))
       setMessage('已保存')
+      return true
     } catch (err) {
       setMessage(err instanceof ApiError ? err.message : '保存失败')
+      return false
     }
   }
 
@@ -178,15 +193,7 @@ export default function AdminSettingsPage() {
               defaultValue={displayString('security.smtp_username')}
               onBlur={(v) => handleSave('security.smtp_username', v)}
             />
-            <Field
-              label="SMTP Password"
-              type="password"
-              placeholder="留空表示不修改"
-              defaultValue=""
-              onBlur={(v) => {
-                if (v && v !== '••••••••') handleSave('security.smtp_password', v)
-              }}
-            />
+            <SecretField label="SMTP Password" onSave={(v) => handleSave('security.smtp_password', v)} />
             <Field label="SMTP From" defaultValue={displayString('security.smtp_from')} onBlur={(v) => handleSave('security.smtp_from', v)} />
             <Toggle
               label="人机验证"
@@ -211,15 +218,7 @@ export default function AdminSettingsPage() {
               defaultValue={displayString('security.captcha_site_key')}
               onBlur={(v) => handleSave('security.captcha_site_key', v)}
             />
-            <Field
-              label="Captcha Secret Key（仅服务端）"
-              type="password"
-              placeholder="留空表示不修改"
-              defaultValue=""
-              onBlur={(v) => {
-                if (v && v !== '••••••••') handleSave('security.captcha_secret_key', v)
-              }}
-            />
+            <SecretField label="Captcha Secret Key（仅服务端）" onSave={(v) => handleSave('security.captcha_secret_key', v)} />
             <Field
               label="公开 API 限速 (req/s)"
               defaultValue={displayString('security.rate_limit_public', '20')}
@@ -253,24 +252,46 @@ export default function AdminSettingsPage() {
               defaultValue={displayString('auth.oauth_github_client_id')}
               onBlur={(v) => handleSave('auth.oauth_github_client_id', v)}
             />
-            <Field
-              label="GitHub Client Secret"
-              type="password"
-              placeholder="留空表示不修改"
-              defaultValue=""
-              onBlur={(v) => {
-                if (v && v !== '••••••••') handleSave('auth.oauth_github_client_secret', v)
-              }}
-            />
+            <SecretField label="GitHub Client Secret" onSave={(v) => handleSave('auth.oauth_github_client_secret', v)} />
           </>
         )}
       </Panel>
 
       <details className="mt-8 text-sm text-muted">
-        <summary className="cursor-pointer">原始配置键列表（{rows.length}）</summary>
+        <summary className="cursor-pointer">原始配置键列表（{rowCount}）</summary>
         <pre className="mt-2 overflow-auto rounded bg-background p-3 text-xs">{JSON.stringify(map, null, 2)}</pre>
       </details>
     </div>
+  )
+}
+
+function SecretField({ label, onSave }: { label: string; onSave: (value: string) => Promise<boolean> }) {
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!draft || draft === secretMask || saving) return
+    setSaving(true)
+    try {
+      if (await onSave(draft)) setDraft('')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <label className="block text-sm">
+      {label}
+      <Input
+        type="password"
+        value={draft}
+        placeholder="留空表示不修改"
+        autoComplete="new-password"
+        disabled={saving}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void save()}
+      />
+    </label>
   )
 }
 
@@ -322,14 +343,15 @@ function Toggle({
   checked: boolean
   onChange: (v: boolean) => void
 }) {
+  const id = useId()
   return (
     <div className="flex items-center justify-between rounded bg-background p-4">
       <div>
-        <div className="font-medium">{label}</div>
-        <div className="text-sm text-muted">{desc}</div>
+        <div id={`${id}-label`} className="font-medium">{label}</div>
+        <div id={`${id}-description`} className="text-sm text-muted">{desc}</div>
       </div>
       <label className="relative inline-flex min-h-touch cursor-pointer items-center">
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
+        <input type="checkbox" aria-labelledby={`${id}-label`} aria-describedby={`${id}-description`} checked={checked} onChange={(e) => onChange(e.target.checked)} className="peer sr-only" />
         <div className="h-6 w-11 rounded-full bg-border after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-primary peer-checked:after:translate-x-full peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2" />
       </label>
     </div>

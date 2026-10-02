@@ -6,6 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
@@ -55,6 +56,7 @@ func (h *CaseHandler) GetCase(c echo.Context) error {
 func (h *CaseHandler) ListCases(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	status := c.QueryParam("status")
 	subjectID := c.QueryParam("subject_id")
 

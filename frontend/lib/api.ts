@@ -11,30 +11,71 @@ export type ApiRequestOptions = {
 
 type TokenGetter = () => string | null
 type UnauthorizedHandler = () => void
+type SessionOwner = { token: string | null; generation: number }
+
+let getGeneration = () => 0
+let onRefresh: (() => Promise<boolean>) | null = null
+let refreshFlight: { owner: SessionOwner; promise: Promise<boolean> } | null = null
+let unauthorizedOwner: SessionOwner | null = null
+
+function sessionOwner(): SessionOwner {
+  return { token: getToken(), generation: getGeneration() }
+}
+
+function sameOwner(a: SessionOwner, b: SessionOwner) {
+  return a.token === b.token && a.generation === b.generation
+}
+
+function isCurrent(owner: SessionOwner) {
+  return sameOwner(owner, sessionOwner())
+}
 
 let getToken: TokenGetter = () => {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('token')
+  return window.localStorage?.getItem('token') ?? null
 }
 
 let onUnauthorized: UnauthorizedHandler | null = null
-let unauthorizedNotified = false
 
 export function configureApiClient(options: {
   getToken?: TokenGetter
+  getGeneration?: () => number
   onUnauthorized?: UnauthorizedHandler | null
+  onRefresh?: (() => Promise<boolean>) | null
 }) {
   if (options.getToken) getToken = options.getToken
+  if (options.getGeneration) getGeneration = options.getGeneration
   if (options.onUnauthorized !== undefined) {
     onUnauthorized = options.onUnauthorized
-    unauthorizedNotified = false
+    unauthorizedOwner = null
+  }
+  if (options.onRefresh !== undefined) {
+    onRefresh = options.onRefresh
+    refreshFlight = null
   }
 }
 
+// Both bootstrap and concurrent safe reads share the same refresh for this session.
+export function refreshApiSession(): Promise<boolean> {
+  const owner = sessionOwner()
+  if (refreshFlight && sameOwner(refreshFlight.owner, owner)) return refreshFlight.promise
+  if (!onRefresh) return Promise.resolve(false)
+  const handler = onRefresh
+  const flight = { owner, promise: Promise.resolve(false) }
+  flight.promise = Promise.resolve().then(() => isCurrent(owner) ? handler() : false).finally(() => {
+    if (refreshFlight === flight) refreshFlight = null
+  })
+  refreshFlight = flight
+  return flight.promise
+}
+
 export function resetApiClientForTests() {
-  getToken = () => (typeof window === 'undefined' ? null : localStorage.getItem('token'))
+  getToken = () => (typeof window === 'undefined' ? null : window.localStorage?.getItem('token') ?? null)
   onUnauthorized = null
-  unauthorizedNotified = false
+  getGeneration = () => 0
+  onRefresh = null
+  refreshFlight = null
+  unauthorizedOwner = null
 }
 
 async function parseBody(res: Response): Promise<unknown> {
@@ -58,7 +99,7 @@ function messageFromBody(body: unknown, fallback: string): string {
   return fallback
 }
 
-function buildRequest(path: string, options: ApiRequestOptions = {}) {
+function buildRequest(path: string, options: ApiRequestOptions = {}, owner = sessionOwner()) {
   const headers = new Headers(options.headers || {})
   let body = options.body ?? null
 
@@ -70,7 +111,7 @@ function buildRequest(path: string, options: ApiRequestOptions = {}) {
   }
 
   if (options.auth) {
-    const token = getToken()
+    const token = owner.token
     if (token) headers.set('Authorization', `Bearer ${token}`)
   }
 
@@ -86,29 +127,49 @@ function buildRequest(path: string, options: ApiRequestOptions = {}) {
   }
 }
 
-function notifyUnauthorized(status: number) {
-  if (status === 401 && onUnauthorized && !unauthorizedNotified) {
-    unauthorizedNotified = true
+function notifyUnauthorized(owner: SessionOwner) {
+  if (owner.token && isCurrent(owner) && onUnauthorized &&
+      (!unauthorizedOwner || !sameOwner(unauthorizedOwner, owner))) {
+    unauthorizedOwner = owner
     onUnauthorized()
   }
 }
 
-export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { url, init } = buildRequest(path, options)
+async function requestResponse(path: string, options: ApiRequestOptions): Promise<Response> {
+  const owner = sessionOwner()
+  const { url, init } = buildRequest(path, options, owner)
   const res = await fetch(url, init)
+  // Public/login failures cannot consume the current session's notification.
+  if (res.status !== 401 || !options.auth || !owner.token || !isCurrent(owner)) return res
+  const method = String(init.method).toUpperCase()
+  if ((method === 'GET' || method === 'HEAD') && onRefresh) {
+    const renewed = await refreshApiSession().catch(() => false)
+    const current = sessionOwner()
+    // Rotation is within a generation; a new login/logout must never replay this read.
+    if (renewed && current.generation === owner.generation && current.token && !options.signal?.aborted) {
+      const retry = buildRequest(path, options, current)
+      const retried = await fetch(retry.url, retry.init)
+      if (retried.status === 401) notifyUnauthorized(current)
+      return retried
+    }
+  }
+  // Mutations are never replayed, even if a refresh token is available.
+  notifyUnauthorized(owner)
+  return res
+}
+
+export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
+  const res = await requestResponse(path, options)
   const parsed = await parseBody(res)
   if (!res.ok) {
-    notifyUnauthorized(res.status)
     throw new ApiError(res.status, messageFromBody(parsed, res.statusText || 'request failed'), parsed)
   }
   return parsed as T
 }
 
 export async function apiBlob(path: string, options: ApiRequestOptions = {}): Promise<Blob> {
-  const { url, init } = buildRequest(path, options)
-  const res = await fetch(url, init)
+  const res = await requestResponse(path, options)
   if (!res.ok) {
-    notifyUnauthorized(res.status)
     const parsed = await parseBody(res)
     throw new ApiError(res.status, messageFromBody(parsed, res.statusText || 'request failed'), parsed)
   }

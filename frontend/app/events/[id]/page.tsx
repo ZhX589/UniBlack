@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/app/providers'
 import { apiRequest } from '@/lib/api'
@@ -39,45 +39,70 @@ export default function EventDetailPage() {
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const loadAppeals = useCallback(async (eventId: string, signal?: AbortSignal) => {
-    if (status !== 'authenticated') {
-      setAppeals([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+  const detailRequest = useRef(0)
+  const historyRequest = useRef<{ generation: number; controller?: AbortController }>({ generation: 0 })
+  const cancelHistory = useCallback(() => {
+    historyRequest.current.generation += 1
+    historyRequest.current.controller?.abort()
+  }, [])
+
+  const loadAppeals = useCallback(async () => {
+    cancelHistory()
+    setAppeals([])
+    setHistoryError('')
+    if (status !== 'authenticated' || !id) {
+      setHistoryLoading(false)
       return
     }
+    const controller = new AbortController()
+    const generation = historyRequest.current.generation
+    historyRequest.current.controller = controller
+    const current = () => !controller.signal.aborted && historyRequest.current.generation === generation
+    setHistoryLoading(true)
     try {
-      const data = await apiRequest<Appeal[]>(`/api/events/${eventId}/appeals`, {
-        auth: true,
-        signal,
-      })
-      setAppeals(Array.isArray(data) ? data : [])
-    } catch {
-      // Appeal history is authenticated-only; ignore if unavailable.
-      setAppeals([])
+      const data = await apiRequest<Appeal[]>(`/api/events/${id}/appeals`, { auth: true, signal: controller.signal })
+      if (current()) setAppeals(Array.isArray(data) ? data : [])
+    } catch (err) {
+      if (current()) setHistoryError(err instanceof ApiError ? err.message : '申诉历史加载失败')
+    } finally {
+      if (current()) setHistoryLoading(false)
     }
-  }, [status])
+  }, [status, id, cancelHistory])
 
   useEffect(() => {
     if (!id) return
     const controller = new AbortController()
+    const generation = ++detailRequest.current
+    const current = () => !controller.signal.aborted && detailRequest.current === generation
     setLoading(true)
+    setError('')
+    setEvent(null)
+    setFeedback(null)
+    setSubmitting(false)
+    setReason('')
     apiRequest<EventItem>(`/api/v1/events/${id}`, { signal: controller.signal })
-      .then(async (data) => {
-        setEvent(data)
-        await loadAppeals(id, controller.signal)
-      })
+      .then((data) => { if (current()) setEvent(data) })
       .catch((err) => {
-        if (controller.signal.aborted) return
-        setError(err instanceof ApiError ? err.message : '加载失败')
+        if (current()) setError(err instanceof ApiError ? err.message : '加载失败')
       })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [id, loadAppeals])
+      .finally(() => { if (current()) setLoading(false) })
+    return () => {
+      detailRequest.current += 1
+      controller.abort()
+    }
+  }, [id])
+
+  useEffect(() => {
+    void loadAppeals()
+    return cancelHistory
+  }, [loadAppeals, cancelHistory])
 
   async function submitAppeal(e: FormEvent) {
     e.preventDefault()
     if (!id || !reason.trim()) return
+    const generation = detailRequest.current
     setSubmitting(true)
     setFeedback(null)
     try {
@@ -85,18 +110,20 @@ export default function EventDetailPage() {
         auth: true,
         json: { reason: reason.trim() },
       })
+      if (detailRequest.current !== generation) return
       // Success: clear user input and refresh appeal history.
       setReason('')
       setFeedback({ tone: 'success', message: '申诉已提交，等待审核' })
-      await loadAppeals(id)
+      await loadAppeals()
     } catch (err) {
+      if (detailRequest.current !== generation) return
       // Failure: preserve `reason` so the user does not lose their drafting.
       setFeedback({
         tone: 'danger',
         message: err instanceof ApiError ? err.message : '申诉提交失败，请稍后重试',
       })
     } finally {
-      setSubmitting(false)
+      if (detailRequest.current === generation) setSubmitting(false)
     }
   }
 
@@ -240,6 +267,13 @@ export default function EventDetailPage() {
           <h3 className="font-semibold">申诉记录</h3>
           {status !== 'authenticated' ? (
             <p className="mt-2 text-sm text-muted">登录后可查看该事件的申诉历史。</p>
+          ) : historyLoading ? (
+            <LoadingState message="正在加载申诉历史…" />
+          ) : historyError ? (
+            <div>
+              <ErrorState message={historyError} />
+              <Button type="button" variant="secondary" onClick={() => void loadAppeals()}>重试申诉历史</Button>
+            </div>
           ) : appeals.length === 0 ? (
             <EmptyState message="当前事件暂无申诉记录。" />
           ) : (

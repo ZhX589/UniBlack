@@ -1,5 +1,5 @@
 const tones = {
-  neutral: 'glass bg-foreground/5 text-text-secondary',
+  neutral: 'glass bg-foreground/10 text-text-secondary',
   danger: 'glass bg-danger/10 text-danger',
   success: 'glass bg-success/10 text-success',
   warning: 'glass bg-warning/10 text-warning',

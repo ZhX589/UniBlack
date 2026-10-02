@@ -65,11 +65,11 @@ UniBlack 的核心功能闭环（对象、账号、事件、证据、申诉、�
 - **前端门禁**：`npm run lint`（0 warnings）、`npm run typecheck`、`npm run build` 全部通过。
 - **后端**：`go vet`、`go build ./cmd/server`、`go test ./internal/integration`（6/6）通过。
 - **独立只读审查**：对照规格逐条核查 7 项边界（无伪造证据元数据、无 token/fetch 越界、Case 兼容保留、Evidence 仅详情预加载、prompt 单裁决保留、JSON/multipart 形状不变、S1–S12 均有实现或测试证据），结论 **pass**。
-- **已知非回归**：E2E 中少数失败来自 Playwright `page.route()` mock 在 fully-parallel 工作器间的竞态（`--workers=1` 下全绿）与未启动后端时 dev server 的 `ECONNREFUSED`，均与实现无关。
+- **验证限制（2026-10-02 标记校正）**：历史 E2E 记录包含失败，不能据串行通过就认定其与实现无关。`page.route()` 跨 worker 竞态是当时的归因假说，不是已复现结论；`ECONNREFUSED` 说明该环境后端未就绪。完整并行矩阵、trace 和夹具隔离仍需补验，不豁免发布门禁。
 
 ## Journey Log
 
-- [lesson] Playwright `page.route()` mock 在 `fullyParallel` 模式下会跨测试竞态；含路由 mock 的 spec 需要 `--workers=1` 或单 worker 串行跑才确定。
+- [待复核归因] 当时怀疑 fully-parallel 下存在 mock/夹具竞态；`--workers=1` 只是诊断变量，不证明 `page.route()` 跨 worker 污染。应保留并行 trace、共享后端与 mock 生命周期证据后再定因。
 - [lesson] Next.js 会注入 `__next-route-announcer__` 的 `role="alert"`，Playwright 中 `getByRole('alert')` 需要按文本过滤，避免严格模式多匹配。
 - [pivot] 事件详情页的证据展示发现公开 Event 响应本不含 evidence，先补最小只读 GORM 预加载（无迁移）再实现前端，避免长期空态。
 - [lesson] Vitest 配置未启用 RTL 自动 cleanup，组件测试需局部 `afterEach(cleanup)`，否则残留挂载导致 `getByRole` 歧义。

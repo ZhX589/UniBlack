@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 )
@@ -90,12 +91,7 @@ func (s *SubmissionService) GetSubmission(ctx context.Context, id string) (*mode
 
 // ListSubmissions lists submissions with pagination
 func (s *SubmissionService) ListSubmissions(ctx context.Context, page, pageSize int, status, submittedBy string) ([]models.Submission, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	offset := (page - 1) * pageSize
 	return s.submissionRepo.ListSubmissions(ctx, offset, pageSize, status, submittedBy)
 }

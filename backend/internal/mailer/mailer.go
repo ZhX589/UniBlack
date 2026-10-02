@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 // Message is a simple outbound email.
@@ -30,6 +31,7 @@ type Config struct {
 	From               string
 	SSL                bool // implicit TLS (465)
 	InsecureSkipVerify bool
+	Timeout            time.Duration // whole SMTP exchange; default 15s
 }
 
 // New builds a mailer. When host is empty, returns LogMailer (dev-friendly).
@@ -68,7 +70,12 @@ func (m SMTPMailer) Send(ctx context.Context, msg Message) error {
 	if from == "" {
 		return fmt.Errorf("smtp from address not configured")
 	}
-	addr := fmt.Sprintf("%s:%d", m.Config.Host, m.Config.Port)
+	for _, field := range append([]string{from, msg.Subject}, msg.To...) {
+		if strings.ContainsAny(field, "\r\n") {
+			return fmt.Errorf("invalid mail header")
+		}
+	}
+	addr := net.JoinHostPort(m.Config.Host, fmt.Sprint(m.Config.Port))
 
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
@@ -79,36 +86,59 @@ func (m SMTPMailer) Send(ctx context.Context, msg Message) error {
 	b.WriteString(msg.Body)
 	raw := []byte(b.String())
 
-	if m.Config.SSL {
-		return m.sendSSL(ctx, addr, from, msg.To, raw)
-	}
-	var auth smtp.Auth
-	if m.Config.Username != "" {
-		auth = smtp.PlainAuth("", m.Config.Username, m.Config.Password, m.Config.Host)
-	}
-	// smtp.SendMail does not take context; best-effort
-	return smtp.SendMail(addr, auth, from, msg.To, raw)
+	return m.send(ctx, addr, from, msg.To, raw)
 }
 
-func (m SMTPMailer) sendSSL(ctx context.Context, addr, from string, to []string, raw []byte) error {
-	d := net.Dialer{}
-	conn, err := d.DialContext(ctx, "tcp", addr)
+func (m SMTPMailer) send(ctx context.Context, addr, from string, to []string, raw []byte) (sendErr error) {
+	timeout := m.Config.Timeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	defer func() {
+		if ctx.Err() != nil {
+			sendErr = ctx.Err()
+		}
+	}()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
-	tlsConn := tls.Client(conn, &tls.Config{
-		ServerName:         m.Config.Host,
-		InsecureSkipVerify: m.Config.InsecureSkipVerify, //nolint:gosec // configurable for self-signed
-	})
-	if err := tlsConn.HandshakeContext(ctx); err != nil {
-		return err
+	// Deadlines bound the entire exchange, including greeting, AUTH and DATA.
+	if deadline, ok := ctx.Deadline(); ok {
+		if err := conn.SetDeadline(deadline); err != nil {
+			return err
+		}
 	}
-	c, err := smtp.NewClient(tlsConn, m.Config.Host)
+	rawConn := conn
+	stop := context.AfterFunc(ctx, func() { _ = rawConn.Close() })
+	defer stop()
+	tlsConfig := &tls.Config{
+		ServerName:         m.Config.Host,
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: m.Config.InsecureSkipVerify, //nolint:gosec // configurable for self-signed
+	}
+	if m.Config.SSL {
+		tlsConn := tls.Client(conn, tlsConfig)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			return err
+		}
+		conn = tlsConn
+	}
+	c, err := smtp.NewClient(conn, m.Config.Host)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
+	if !m.Config.SSL {
+		if ok, _ := c.Extension("STARTTLS"); ok {
+			if err := c.StartTLS(tlsConfig); err != nil {
+				return err
+			}
+		}
+	}
 	if m.Config.Username != "" {
 		if err := c.Auth(smtp.PlainAuth("", m.Config.Username, m.Config.Password, m.Config.Host)); err != nil {
 			return err

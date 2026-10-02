@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
 )
@@ -110,12 +111,7 @@ func (s *CaseService) GetCase(ctx context.Context, id string) (*models.Case, err
 
 // ListCases lists cases with pagination
 func (s *CaseService) ListCases(ctx context.Context, page, pageSize int, status, subjectID string) ([]models.Case, int64, error) {
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	offset := (page - 1) * pageSize
 	return s.caseRepo.ListCases(ctx, offset, pageSize, status, subjectID)
 }

@@ -12,7 +12,12 @@ import (
 )
 
 var (
-	ErrAppealNotFound = errors.New("appeal not found")
+	ErrAppealNotFound        = errors.New("appeal not found")
+	ErrAppealForbidden       = errors.New("not permitted to retire this appeal")
+	ErrAppealAlreadyResolved = errors.New("appeal already resolved")
+	ErrAppealInvalidReview   = errors.New("review status must be approved or rejected")
+	ErrAppealResolveRequired = errors.New("event appeals require the formal resolve endpoint")
+	ErrAppealInvalidTarget   = errors.New("legacy review requires an existing case target")
 )
 
 // AppealRepository handles appeal database operations
@@ -87,20 +92,48 @@ func (r *AppealRepository) ListAppeals(ctx context.Context, offset, limit int, s
 	return appeals, total, err
 }
 
-// ReviewAppeal updates appeal status after review
+// ReviewAppeal preserves Case-only legacy decisions without inventing a canonical
+// outcome. Event decisions and their consequences belong to ResolveWithConsequences.
 func (r *AppealRepository) ReviewAppeal(ctx context.Context, id, reviewedBy, status, reviewNotes string) error {
-	now := time.Now()
-	updates := map[string]interface{}{
-		"status":       status,
-		"reviewed_by":  reviewedBy,
-		"review_notes": reviewNotes,
-		"reviewed_at":  now,
+	if status != "approved" && status != "rejected" {
+		return ErrAppealInvalidReview
 	}
-
-	return r.db.WithContext(ctx).
-		Model(&models.Appeal{}).
-		Where("id = ?", id).
-		Updates(updates).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var appeal models.Appeal
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND deleted_at IS NULL", id).First(&appeal).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAppealNotFound
+			}
+			return err
+		}
+		if appeal.EventID != nil {
+			return ErrAppealResolveRequired
+		}
+		if appeal.Status != "pending" || appeal.Outcome != nil || appeal.ReviewedAt != nil || appeal.ReviewedBy != nil || appeal.ResolutionReason != nil {
+			return ErrAppealAlreadyResolved
+		}
+		if appeal.CaseID == nil {
+			return ErrAppealInvalidTarget
+		}
+		// Read the complete Case under lock; never Save an ID-only model, which
+		// clears unrelated fields. Legacy approval has no defined Case mutation
+		// or canonical outcome, so its data remains unchanged.
+		var caseObj models.Case
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", *appeal.CaseID).First(&caseObj).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAppealInvalidTarget
+			}
+			return err
+		}
+		if err := tx.Model(&appeal).Updates(map[string]interface{}{
+			"status": status, "reviewed_by": reviewedBy, "review_notes": reviewNotes, "reviewed_at": time.Now(),
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&models.AuditLog{UserID: &reviewedBy, Action: "review", ResourceType: "appeal", ResourceID: &appeal.ID,
+			Changes: map[string]interface{}{"old_status": "pending", "status": status, "review_notes": reviewNotes, "case_id": caseObj.ID},
+		}).Error
+	})
 }
 
 // ResolveAppeal persists the Phase 13 outcome alongside the legacy review state.
@@ -135,6 +168,10 @@ func (r *AppealRepository) ResolveWithConsequences(ctx context.Context, id, revi
 			return err
 		}
 		if appeal.EventID != nil {
+			var event models.Event
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", *appeal.EventID).First(&event).Error; err != nil {
+				return err
+			}
 			newStatus := ""
 			if outcome == "corrected" {
 				newStatus = "corrected"
@@ -144,6 +181,11 @@ func (r *AppealRepository) ResolveWithConsequences(ctx context.Context, id, revi
 			}
 			if newStatus != "" {
 				if err := tx.Model(&models.Event{}).Where("id = ?", *appeal.EventID).Updates(map[string]interface{}{"status": newStatus, "correction_note": reason}).Error; err != nil {
+					return err
+				}
+				event.Status = newStatus
+				event.CorrectionNote = &reason
+				if err := recordEventVersion(tx, &event, "appeal_"+outcome, &reviewedBy); err != nil {
 					return err
 				}
 			}
@@ -174,9 +216,27 @@ func (r *AppealRepository) ResolveWithConsequences(ctx context.Context, id, revi
 
 // DeleteAppeal preserves appeal history and only hides it from active reads.
 // Retirement and the delete audit must commit together so active rows never hide without history.
-func (r *AppealRepository) DeleteAppeal(ctx context.Context, id, deletedBy string) error {
+func (r *AppealRepository) DeleteAppeal(ctx context.Context, id, deletedBy string, governance bool) error {
+	if deletedBy == "" {
+		return ErrAppealForbidden
+	}
 	now := time.Now()
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var appeal models.Appeal
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND deleted_at IS NULL", id).First(&appeal).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrAppealNotFound
+			}
+			return err
+		}
+		if !governance {
+			if appeal.SubmittedBy == nil || *appeal.SubmittedBy != deletedBy {
+				return ErrAppealForbidden
+			}
+			if appeal.Status != "pending" || appeal.Outcome != nil || appeal.ReviewedAt != nil {
+				return ErrAppealAlreadyResolved
+			}
+		}
 		result := tx.Model(&models.Appeal{}).Where("id = ? AND deleted_at IS NULL", id).Update("deleted_at", now)
 		if result.Error != nil {
 			return result.Error

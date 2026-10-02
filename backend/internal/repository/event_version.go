@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 )
@@ -19,8 +20,20 @@ func NewEventVersionRepository(db *gorm.DB) *EventVersionRepository {
 
 // RecordVersion creates a new version snapshot for an event.
 func (r *EventVersionRepository) RecordVersion(ctx context.Context, event *models.Event, changeType string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Serialize snapshots on the stable parent row, not MAX(version_number).
+		var current models.Event
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", event.ID).First(&current).Error; err != nil {
+			return err
+		}
+		return recordEventVersion(tx, &current, changeType, event.SubmittedBy)
+	})
+}
+
+// Caller must hold the event row lock (or have inserted it in this transaction).
+func recordEventVersion(tx *gorm.DB, event *models.Event, changeType string, changedBy *string) error {
 	var maxVersion int
-	if err := r.db.WithContext(ctx).
+	if err := tx.
 		Model(&models.EventVersion{}).
 		Where("event_id = ?", event.ID).
 		Select("COALESCE(MAX(version_number), 0)").
@@ -36,9 +49,9 @@ func (r *EventVersionRepository) RecordVersion(ctx context.Context, event *model
 		Severity:      event.Severity,
 		Status:        event.Status,
 		ChangeType:    changeType,
-		ChangedBy:     event.SubmittedBy,
+		ChangedBy:     changedBy,
 	}
-	return r.db.WithContext(ctx).Create(v).Error
+	return tx.Create(v).Error
 }
 
 // ListByEvent returns all versions for an event, newest first.

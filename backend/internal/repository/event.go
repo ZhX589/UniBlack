@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
@@ -71,6 +72,9 @@ func (r *EventRepository) PublishWithEvidence(ctx context.Context, subject *mode
 			if err := tx.Create(&events[i]).Error; err != nil {
 				return err
 			}
+			if err := recordEventVersion(tx, &events[i], "create", events[i].SubmittedBy); err != nil {
+				return err
+			}
 		}
 		for i := range evidence {
 			if evidence[i].EventIndex < 0 || evidence[i].EventIndex >= len(events) {
@@ -113,9 +117,23 @@ func (r *EventRepository) UpdateStatus(ctx context.Context, id, status, note str
 	if note != "" {
 		updates["correction_note"] = note
 	}
-	result := r.db.WithContext(ctx).Model(&models.Event{}).Where("id = ?", id).Updates(updates)
-	if result.RowsAffected == 0 {
-		return ErrEventNotFound
-	}
-	return result.Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var event models.Event
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&event).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrEventNotFound
+			}
+			return err
+		}
+		if err := tx.Model(&event).Updates(updates).Error; err != nil {
+			return err
+		}
+		event.Status = status
+		if note != "" {
+			event.CorrectionNote = &note
+		}
+		// This legacy internal method has no actor; do not misattribute the
+		// change to the original submitter.
+		return recordEventVersion(tx, &event, "status_change", nil)
+	})
 }

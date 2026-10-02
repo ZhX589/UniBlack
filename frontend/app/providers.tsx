@@ -1,7 +1,7 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { apiRequest, configureApiClient } from '@/lib/api'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { apiRequest, configureApiClient, refreshApiSession } from '@/lib/api'
 import type { AuthUser, PublicSettings } from '@/lib/types'
 import { settingBool, settingString } from '@/lib/settings'
 
@@ -22,6 +22,8 @@ type SiteState = {
   registrationEnabled: boolean
 }
 
+// Monotonic across provider remounts, including StrictMode effect replays.
+let sessionGeneration = 0
 const AuthContext = createContext<AuthState | null>(null)
 const SiteContext = createContext<SiteState>({
   status: 'loading',
@@ -54,6 +56,7 @@ function applyThemeColor(color: string) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const generation = useRef(0)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [status, setStatus] = useState<AuthState['status']>('loading')
   const [site, setSite] = useState<SiteState>({
@@ -66,25 +69,58 @@ export function Providers({ children }: { children: React.ReactNode }) {
   })
 
   const logout = useCallback(() => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('refresh_token')
+    generation.current = ++sessionGeneration
+    window.localStorage.removeItem('token')
+    window.localStorage.removeItem('refresh_token')
     setUser(null)
     setStatus('anonymous')
   }, [])
 
   useEffect(() => {
+    let active = true
+    generation.current = ++sessionGeneration
     configureApiClient({
-      getToken: () => localStorage.getItem('token'),
+      getToken: () => window.localStorage.getItem('token'),
+      getGeneration: () => generation.current,
       onUnauthorized: logout,
+      onRefresh: async () => {
+        const owner = generation.current
+        const access = window.localStorage.getItem('token')
+        const refresh = window.localStorage.getItem('refresh_token')
+        const ownsSession = () => active && generation.current === owner &&
+          window.localStorage.getItem('token') === access && window.localStorage.getItem('refresh_token') === refresh
+        if (!refresh) return false
+        try {
+          const tokens = await apiRequest<{ access_token: string; refresh_token: string }>('/api/auth/refresh', {
+            method: 'POST', json: { refresh_token: refresh },
+          })
+          if (!ownsSession()) return false
+          const identity = decodeToken(tokens.access_token)
+          if (!identity || !tokens.refresh_token) throw new Error('invalid refreshed session')
+          window.localStorage.setItem('token', tokens.access_token)
+          window.localStorage.setItem('refresh_token', tokens.refresh_token)
+          setUser(identity)
+          setStatus('authenticated')
+          return true
+        } catch {
+          if (ownsSession()) logout()
+          return false
+        }
+      },
     })
-    const token = localStorage.getItem('token') || ''
+    const token = window.localStorage.getItem('token') || ''
     const identity = decodeToken(token)
-    if (!identity && token) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('refresh_token')
+    if (identity) {
+      setUser(identity)
+      setStatus('authenticated')
+    } else if (window.localStorage.getItem('refresh_token')) {
+      const owner = generation.current
+      void refreshApiSession().then((renewed) => {
+        if (active && !renewed && generation.current === owner) logout()
+      })
+    } else {
+      logout()
     }
-    setUser(identity)
-    setStatus(identity ? 'authenticated' : 'anonymous')
 
     apiRequest<PublicSettings>('/api/settings/public')
       .then((settings) => {
@@ -103,6 +139,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
         applyThemeColor('#2563EB')
         setSite((current) => ({ ...current, status: 'fallback' }))
       })
+
+    return () => {
+      active = false
+      configureApiClient({ onUnauthorized: null, onRefresh: null })
+    }
   }, [logout])
 
   const auth = useMemo<AuthState>(
@@ -110,8 +151,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       status,
       user,
       login: (token, refresh) => {
-        localStorage.setItem('token', token)
-        localStorage.setItem('refresh_token', refresh)
+        generation.current = ++sessionGeneration
+        window.localStorage.setItem('token', token)
+        window.localStorage.setItem('refresh_token', refresh)
         setUser(decodeToken(token))
         setStatus('authenticated')
       },

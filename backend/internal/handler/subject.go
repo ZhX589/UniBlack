@@ -1,17 +1,34 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
+	"github.com/ZhX589/UniBlack/backend/internal/models"
 	"github.com/ZhX589/UniBlack/backend/internal/service"
 )
 
+type subjectService interface {
+	CreateSubject(context.Context, service.CreateSubjectRequest, string) (*models.Subject, error)
+	GetSubject(context.Context, string) (*models.Subject, error)
+	GetSubjectByIdentifier(context.Context, string, string) (*models.Subject, error)
+	ListSubjects(context.Context, int, int, string) ([]models.Subject, int64, error)
+	UpdateSubject(context.Context, string, service.UpdateSubjectRequest, string, []string) (*models.Subject, error)
+	DeleteSubject(context.Context, string, string, []string) error
+	SearchSubjects(context.Context, string) ([]models.Subject, error)
+	AddIdentifier(context.Context, string, service.IdentifierRequest, string, []string) (*models.Identifier, error)
+	RemoveIdentifier(context.Context, string, string, []string) error
+	GetIdentifiersBySubjectID(context.Context, string) ([]models.Identifier, error)
+}
+
 // SubjectHandler handles subject requests
 type SubjectHandler struct {
-	subjectService *service.SubjectService
+	subjectService subjectService
 }
 
 // NewSubjectHandler creates a new subject handler
@@ -48,7 +65,7 @@ func (h *SubjectHandler) GetSubject(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, subject)
+	return c.JSON(http.StatusOK, subjectWithVisibleEvents(c, subject))
 }
 
 // GetSubjectByIdentifier retrieves a subject by identifier
@@ -68,13 +85,14 @@ func (h *SubjectHandler) GetSubjectByIdentifier(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, subject)
+	return c.JSON(http.StatusOK, subjectWithVisibleEvents(c, subject))
 }
 
 // ListSubjects lists subjects with pagination
 func (h *SubjectHandler) ListSubjects(c echo.Context) error {
 	page, _ := strconv.Atoi(c.QueryParam("page"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("page_size"))
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	status := c.QueryParam("status")
 
 	subjects, total, err := h.subjectService.ListSubjects(c.Request().Context(), page, pageSize, status)
@@ -83,7 +101,7 @@ func (h *SubjectHandler) ListSubjects(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"subjects":  subjects,
+		"subjects":  subjectsWithVisibleEvents(c, subjects),
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
@@ -99,22 +117,32 @@ func (h *SubjectHandler) UpdateSubject(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	subject, err := h.subjectService.UpdateSubject(c.Request().Context(), id, req)
+	actorID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
+	subject, err := h.subjectService.UpdateSubject(c.Request().Context(), id, req, actorID, roles)
 	if err != nil {
+		if errors.Is(err, service.ErrSubjectAccessDenied) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "subject access denied"})
+		}
 		if err == service.ErrSubjectNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "subject not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, subject)
+	return c.JSON(http.StatusOK, subjectWithVisibleEvents(c, subject))
 }
 
 // DeleteSubject deletes a subject
 func (h *SubjectHandler) DeleteSubject(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.subjectService.DeleteSubject(c.Request().Context(), id); err != nil {
+	actorID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
+	if err := h.subjectService.DeleteSubject(c.Request().Context(), id, actorID, roles); err != nil {
+		if errors.Is(err, service.ErrSubjectAccessDenied) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "subject access denied"})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
@@ -134,7 +162,7 @@ func (h *SubjectHandler) SearchSubjects(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"subjects": subjects,
+		"subjects": subjectsWithVisibleEvents(c, subjects),
 		"total":    len(subjects),
 	})
 }
@@ -148,8 +176,13 @@ func (h *SubjectHandler) AddIdentifier(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
 	}
 
-	identifier, err := h.subjectService.AddIdentifier(c.Request().Context(), subjectID, req)
+	actorID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
+	identifier, err := h.subjectService.AddIdentifier(c.Request().Context(), subjectID, req, actorID, roles)
 	if err != nil {
+		if errors.Is(err, service.ErrSubjectAccessDenied) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "subject access denied"})
+		}
 		if err == service.ErrSubjectNotFound {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "subject not found"})
 		}
@@ -166,7 +199,12 @@ func (h *SubjectHandler) AddIdentifier(c echo.Context) error {
 func (h *SubjectHandler) RemoveIdentifier(c echo.Context) error {
 	id := c.Param("id")
 
-	if err := h.subjectService.RemoveIdentifier(c.Request().Context(), id); err != nil {
+	actorID, _ := c.Get("user_id").(string)
+	roles, _ := c.Get("roles").([]string)
+	if err := h.subjectService.RemoveIdentifier(c.Request().Context(), id, actorID, roles); err != nil {
+		if errors.Is(err, service.ErrSubjectAccessDenied) {
+			return c.JSON(http.StatusForbidden, map[string]string{"error": "subject access denied"})
+		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 

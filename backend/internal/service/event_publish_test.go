@@ -1,9 +1,45 @@
 package service
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/ZhX589/UniBlack/backend/internal/repository"
 )
+
+func TestPublishValidatesWholeEvidenceBatchBeforeUpload(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		text  []PublishTextEvidenceRequest
+		files []PublishFileEvidenceRequest
+		links []PublishLinkEvidenceRequest
+	}{
+		{name: "later empty text", text: []PublishTextEvidenceRequest{{Text: "first valid"}, {Text: ""}}},
+		{name: "later invalid UTF8", text: []PublishTextEvidenceRequest{{Text: "first valid"}, {Text: string([]byte{0xff})}}},
+		{name: "later oversized text", text: []PublishTextEvidenceRequest{{Text: "first valid"}, {Text: strings.Repeat("x", MaxTextEvidenceBytes+1)}}},
+		{name: "later invalid text event", text: []PublishTextEvidenceRequest{{Text: "first valid"}, {EventIndex: 1, Text: "second"}}},
+		{name: "file after text", text: []PublishTextEvidenceRequest{{Text: "first valid"}}, files: []PublishFileEvidenceRequest{{Filename: "invalid.exe", Content: []byte("file")}}},
+		{name: "later file", files: []PublishFileEvidenceRequest{{Filename: "valid.png", Content: []byte("file")}, {Filename: "invalid.exe", Content: []byte("file")}}},
+		{name: "invalid link", text: []PublishTextEvidenceRequest{{Text: "first valid"}}, links: []PublishLinkEvidenceRequest{{Title: "report", URL: "/relative"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &recordingStorage{}
+			s := NewEventService(repository.NewEventRepository(nil, store), nil, nil, nil, nil, nil)
+			req := PublishSubjectRequest{
+				Accounts:     []PublishAccountRequest{{Platform: "test", Username: "alice"}},
+				Events:       []PublishEventRequest{{Title: "event", Details: "details"}},
+				TextEvidence: tc.text, FileEvidence: tc.files, LinkEvidence: tc.links,
+			}
+			if _, err := s.Publish(context.Background(), req, "user-id"); err == nil {
+				t.Fatal("invalid evidence accepted")
+			}
+			if store.uploadedKey != "" || store.deletedKey != "" {
+				t.Fatalf("validation caused storage side effects: upload %q delete %q", store.uploadedKey, store.deletedKey)
+			}
+		})
+	}
+}
 
 func TestPublishTextEvidenceRequiresEventIndex(t *testing.T) {
 	request := PublishTextEvidenceRequest{EventIndex: -1, Text: "evidence"}

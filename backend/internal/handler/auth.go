@@ -31,6 +31,9 @@ func (h *AuthHandler) Register(c echo.Context) error {
 
 	user, err := h.authService.Register(c.Request().Context(), req, ip)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidRegistration) {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
 		if err == service.ErrRegistrationClosed {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "registration is closed"})
 		}

@@ -7,6 +7,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 
+	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/repository"
 )
 
@@ -28,12 +29,7 @@ func (h *UserManagementHandler) ListUsers(c echo.Context) error {
 	role := c.QueryParam("role")
 	status := c.QueryParam("status")
 
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 || pageSize > 100 {
-		pageSize = 20
-	}
+	page, pageSize = domain.NormalizePagination(page, pageSize)
 	offset := (page - 1) * pageSize
 
 	userRepo := repository.NewUserRepository(h.db)

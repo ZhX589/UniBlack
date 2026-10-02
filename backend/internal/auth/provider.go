@@ -6,11 +6,12 @@ import (
 
 // SubjectIdentity represents the authenticated user's identity
 type SubjectIdentity struct {
-	UserID   string   `json:"user_id"`
-	Username string   `json:"username"`
-	Email    string   `json:"email"`
-	Roles    []string `json:"roles"`
-	Provider string   `json:"provider"`
+	UserID      string   `json:"user_id"`
+	Username    string   `json:"username"`
+	Email       string   `json:"email"`
+	Roles       []string `json:"roles"`
+	Provider    string   `json:"provider"`
+	AuthVersion int64    `json:"auth_version"`
 }
 
 // Credentials represents the authentication credentials
@@ -25,6 +26,12 @@ type TokenPair struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
 	ExpiresIn    int64  `json:"expires_in"` // seconds
+}
+
+// RefreshIdentityValidator separates refresh credential validation from token issuance.
+// Services must reload the current account before issuing a renewed session.
+type RefreshIdentityValidator interface {
+	ValidateRefreshToken(ctx context.Context, refreshToken string) (*SubjectIdentity, error)
 }
 
 // AuthProvider defines the interface for authentication providers
