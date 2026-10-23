@@ -79,7 +79,7 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 	}
 	blobs := map[string]fileBlob{}
 	var totalBytes int
-	if len(form.File) > 64 {
+	if len(form.File) > service.MaxPublishFiles {
 		return req, fmt.Errorf("too many evidence files")
 	}
 	for field, headers := range form.File {
@@ -103,7 +103,7 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 			return req, fmt.Errorf("file too large")
 		}
 		totalBytes += len(content)
-		if totalBytes > 64<<20 {
+		if totalBytes > service.MaxPublishTotalFileBytes {
 			return req, fmt.Errorf("total evidence files too large")
 		}
 		blobs[field] = fileBlob{name: fh.Filename, content: content}

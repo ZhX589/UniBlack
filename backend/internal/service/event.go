@@ -87,7 +87,25 @@ type PublishFileEvidenceRequest struct {
 	Field      string `json:"field,omitempty"`
 }
 
-const MaxPublishFileBytes = 20 << 20
+const (
+	MaxPublishFileBytes      = 20 << 20
+	MaxPublishFiles          = 64
+	MaxPublishTotalFileBytes = 64 << 20
+)
+
+func validatePublishFileBudget(files []PublishFileEvidenceRequest) error {
+	if len(files) > MaxPublishFiles {
+		return errors.New("too many evidence files")
+	}
+	total := 0
+	for _, file := range files {
+		if len(file.Content) > MaxPublishTotalFileBytes-total {
+			return errors.New("total evidence files too large")
+		}
+		total += len(file.Content)
+	}
+	return nil
+}
 
 var allowedPublishFileExt = map[string]bool{
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".webp": true,
@@ -141,6 +159,9 @@ func nextEvidenceKey(publicID string, eventIndex int, ext string, textN, fileN [
 }
 
 func (s *EventService) Publish(ctx context.Context, req PublishSubjectRequest, userID string) (*models.Subject, error) {
+	if err := validatePublishFileBudget(req.FileEvidence); err != nil {
+		return nil, err
+	}
 	if len(req.Accounts) == 0 || len(req.Events) == 0 {
 		return nil, errors.New("at least one account and event required")
 	}
