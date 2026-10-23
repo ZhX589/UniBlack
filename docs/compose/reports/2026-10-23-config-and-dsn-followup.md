@@ -25,6 +25,10 @@
 
 映射修复已在 `b5e391d` 推送。本轮将64文件与64MiB总文件预算下沉到service，Publish在访问验证/仓储等依赖前拒绝超量请求；handler共用同一常量，防止未来入口偏离。新增64/65文件、64MiB/64MiB+1总量、20MiB/20MiB+1单文件及nil依赖前拒绝的回归。Content标记为json:"-"，现有JSON不能直接携带二进制；服务层防线主要覆盖直接调用及未来入口，不把它描述为已存在的JSON二进制攻击。全量Go test/vet/build、service/handler race均退出码0。72MiB HTTP原始请求体临界点尚待单独验收。
 
+## 原始HTTP请求预算
+
+服务预算已在 `0dc6dfa` 推送。本轮提前拒绝Content-Length超过72MiB的请求，并在普通JSON绑定后通过MaxBytesReader有界读取剩余请求体，防止首对象后的尾随数据绕过总预算。已知长度和未知长度（模拟chunked）均测试72MiB恰好合法与72MiB+1拒绝；超量发布返回413，且不调用service。使用流式空白生成器，不分配整个72MiB缓冲。定向临界测试、全量Go test/vet/build与handler race均退出码0。此证据不涵盖代理超时/慢速请求策略，也不声称完整multipart与真实网络组合验收。
+
 ## 边界
 
 生产 Compose 直接将原始 POSTGRES_PASSWORD 插入 URL 的历史问题仍待单独修复；本批没有修改 Compose。更早的健康检查、部署清理文档等未提交修改保留在工作树，不随本批配置修复混入。

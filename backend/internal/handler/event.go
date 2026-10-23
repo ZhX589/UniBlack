@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,6 +30,10 @@ func (h *EventHandler) Publish(c echo.Context) error {
 	userID, _ := c.Get("user_id").(string)
 	req, err := bindPublishRequest(c)
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return c.JSON(http.StatusRequestEntityTooLarge, map[string]string{"error": "publish request too large"})
+		}
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	subject, err := h.service.Publish(c.Request().Context(), req, userID)
@@ -41,14 +46,24 @@ func (h *EventHandler) Publish(c echo.Context) error {
 	return c.JSON(http.StatusCreated, subject)
 }
 
+const maxPublishRequestBytes int64 = 72 << 20
+
 func bindPublishRequest(c echo.Context) (service.PublishSubjectRequest, error) {
-	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, 72<<20)
+	if c.Request().ContentLength > maxPublishRequestBytes {
+		return service.PublishSubjectRequest{}, &http.MaxBytesError{Limit: maxPublishRequestBytes}
+	}
+	c.Request().Body = http.MaxBytesReader(c.Response(), c.Request().Body, maxPublishRequestBytes)
 	ct := c.Request().Header.Get(echo.HeaderContentType)
 	if strings.HasPrefix(ct, echo.MIMEMultipartForm) {
 		return bindMultipartPublish(c)
 	}
 	var req service.PublishSubjectRequest
 	if err := c.Bind(&req); err != nil {
+		return req, err
+	}
+	// Echo decodes one JSON value and may stop before EOF. Drain only through
+	// MaxBytesReader so chunked/trailing data cannot bypass the total budget.
+	if _, err := io.Copy(io.Discard, c.Request().Body); err != nil {
 		return req, err
 	}
 	return req, nil
