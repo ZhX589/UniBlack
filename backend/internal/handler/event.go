@@ -65,8 +65,8 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 	}
 	defer form.RemoveAll()
 	payloadValues := form.Value["payload"]
-	if len(payloadValues) == 0 {
-		return req, fmt.Errorf("payload is required")
+	if len(payloadValues) != 1 {
+		return req, fmt.Errorf("exactly one payload is required")
 	}
 	if err := json.Unmarshal([]byte(payloadValues[0]), &req); err != nil {
 		return req, fmt.Errorf("invalid payload json")
@@ -79,12 +79,16 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 	}
 	blobs := map[string]fileBlob{}
 	var totalBytes int
-	if len(form.File)>64 { return req, fmt.Errorf("too many evidence files") }
+	if len(form.File) > 64 {
+		return req, fmt.Errorf("too many evidence files")
+	}
 	for field, headers := range form.File {
 		if len(headers) == 0 {
 			continue
 		}
-		if len(headers)!=1 { return req, fmt.Errorf("duplicate multipart file field: %s",field) }
+		if len(headers) != 1 {
+			return req, fmt.Errorf("duplicate multipart file field: %s", field)
+		}
 		fh := headers[0]
 		src, err := fh.Open()
 		if err != nil {
@@ -99,17 +103,24 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 			return req, fmt.Errorf("file too large")
 		}
 		totalBytes += len(content)
-		if totalBytes>64<<20 { return req, fmt.Errorf("total evidence files too large") }
+		if totalBytes > 64<<20 {
+			return req, fmt.Errorf("total evidence files too large")
+		}
 		blobs[field] = fileBlob{name: fh.Filename, content: content}
 	}
 
 	// Prefer explicit file_evidence metadata from payload.
 	if len(req.FileEvidence) > 0 {
+		used := make(map[string]bool)
 		for i := range req.FileEvidence {
 			field := req.FileEvidence[i].Field
 			if field == "" {
 				field = "file_" + strconv.Itoa(req.FileEvidence[i].EventIndex) + "_" + strconv.Itoa(i)
 			}
+			if used[field] {
+				return req, fmt.Errorf("duplicate file reference: %s", field)
+			}
+			used[field] = true
 			blob, ok := blobs[field]
 			if !ok {
 				return req, fmt.Errorf("missing multipart file: %s", field)
@@ -119,21 +130,25 @@ func bindMultipartPublish(c echo.Context) (service.PublishSubjectRequest, error)
 				req.FileEvidence[i].Filename = blob.name
 			}
 		}
+		if len(used) != len(blobs) {
+			return req, fmt.Errorf("unreferenced multipart file")
+		}
 		return req, nil
 	}
 
 	// Auto-map file_{event}_{n} fields when payload omits file_evidence.
 	for field, blob := range blobs {
-		if !strings.HasPrefix(field, "file_") {
-			continue
-		}
 		parts := strings.Split(field, "_")
-		if len(parts) < 3 {
-			continue
+		if len(parts) != 3 || parts[0] != "file" {
+			return req, fmt.Errorf("invalid multipart file field")
 		}
 		eventIndex, err := strconv.Atoi(parts[1])
-		if err != nil {
-			continue
+		if err != nil || eventIndex < 0 {
+			return req, fmt.Errorf("invalid multipart event index")
+		}
+		fileIndex, err := strconv.Atoi(parts[2])
+		if err != nil || fileIndex < 0 {
+			return req, fmt.Errorf("invalid multipart file index")
 		}
 		req.FileEvidence = append(req.FileEvidence, service.PublishFileEvidenceRequest{
 			EventIndex: eventIndex,

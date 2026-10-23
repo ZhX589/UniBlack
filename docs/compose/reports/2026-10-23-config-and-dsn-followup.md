@@ -17,6 +17,10 @@
 
 配置修复已在 `c8016d4` 推送。本轮统一 Evidence service/repository 的 NotFound sentinel，handler 使用 errors.Is 支持包裹错误，使缺失证据详情/删除正确返回404；内部读取错误脱敏500。Event证据缺少授权服务时返回503，不再跳过授权直接披露；空结果安全返回404。新增6场景读取矩阵及1个删除404回归，legacy非Event读取兼容行为保留。裸uploads/S3直链和Case范围读取政策未据此声称解决。全量Go test/vet/build及handler/service race退出码均为0；数据库依赖测试仍未配置时跳过。
 
+## Multipart 发布映射边界
+
+前批证据边界已在 `b3262fc` 推送。本批拒绝多个payload值、重复文件field、同一文件被多条元数据重复引用、显式映射遗漏文件，以及自动映射中无效/负数索引，不再静默忽略错误字段。新增9场景映射回归（含2种合法协议）及65文件超量拒绝用例。首次数量夹具使用控制字符导致MIME解析失败，已改为合法file_0_N字段后重跑；定向测试、全量test/vet/build与handler race全部退出码0。本批不宣称已测试72MiB请求体/64MiB总附件/20MiB单文件所有临界点。
+
 ## 边界
 
 生产 Compose 直接将原始 POSTGRES_PASSWORD 插入 URL 的历史问题仍待单独修复；本批没有修改 Compose。更早的健康检查、部署清理文档等未提交修改保留在工作树，不随本批配置修复混入。
