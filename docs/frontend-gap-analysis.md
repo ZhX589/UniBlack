@@ -78,6 +78,10 @@
 
 最新 `npm run test:run`（11 文件、100/100）、`npm run typecheck`、`npm run lint`、`npm run build` 均通过。已修 search/lookup 乱序、管理队列列表/计数错误串扰和 Event 历史失败误显示空记录，新增 6 个可控 Promise 回归。第四批隔离密钥编辑/展示并清空成功草稿，安全开关中文可访问名称，新增 8 个 settings RTL 回归。第五批修复会话归属401、bootstrap续期、single-flight安全读重试，11项延迟回归通过；写请求不自动重放。完整 Playwright 与生产 Compose 未重跑；历史 82/96 不应当成全矩阵完成证据。细节及后端修复限制见 [审计修复进度](<compose/reports/2026-10-02-audit-fixes-progress.md>)。
 
+## 2026-10-24 标签验收补证
+
+新增 [真实SubmitPage DOM回归](<../frontend/test/submit-accessibility.test.tsx>)：添加第二账号/事件后，20个动态输入的中文label可查找、id唯一、可聚焦；保留第一行编辑值且添加按钮type=button、不产生发布请求。最新12文件101/101、typecheck、lint、build均退出码0。此为RTL/jsdom而非真实浏览器键盘/读屏验收；Playwright/Compose仍未重跑。
+
 ## 更新规则
 
 每项改为“已实现”时必须附自动化测试、`npm run build`、Playwright 场景或生产镜像 smoke test 证据。不得仅因文件存在而标记完成。
