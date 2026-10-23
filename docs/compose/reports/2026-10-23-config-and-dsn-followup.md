@@ -33,6 +33,10 @@
 
 HTTP预算修复已在 `0d896ad` 推送。本轮JSON使用同一decoder完成首对象与EOF检查，避免decoder缓冲导致尾随对象/垃圾被忽略；合法尾随空白保留。新增6场景JSON结构契约及2种未知长度超量（首对象内部/首对象后）的413映射回归；之前72MiB精确边界仍通过。全量Go test/vet/build、handler race退出码0。没有修改前端、依赖或部署配置。
 
+## 处罚申诉提交测试补全（2026-10-24）
+
+JSON契约已在 `b805e93` 推送。本轮补2组service测试：pending/owner归属由用例构造，单次委托atomic command，权限/已撤销/重复/审计错误原样传播，空白原因在仓储前拒绝；全量test/vet/build与service race退出码0。另新增2个隔离PG用例：提交audit触发器失败整笔回滚后可重试且规范化pre-resolved输入；并发双提交仅一赢家/一审计。`-v -count=1` 实际结果为DATABASE_URL缺失SKIP，仅编译通过，不宣称SQL已实测。
+
 ## 边界
 
 生产 Compose 直接将原始 POSTGRES_PASSWORD 插入 URL 的历史问题仍待单独修复；本批没有修改 Compose。更早的健康检查、部署清理文档等未提交修改保留在工作树，不随本批配置修复混入。
