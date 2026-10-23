@@ -16,11 +16,12 @@ import (
 
 	"github.com/ZhX589/UniBlack/backend/internal/domain"
 	"github.com/ZhX589/UniBlack/backend/internal/models"
+	"github.com/ZhX589/UniBlack/backend/internal/repository"
 	"github.com/ZhX589/UniBlack/backend/internal/storage"
 )
 
 var (
-	ErrEvidenceNotFound     = errors.New("evidence not found")
+	ErrEvidenceNotFound     = repository.ErrEvidenceNotFound
 	ErrEvidenceAccessDenied = errors.New("not allowed to modify this evidence")
 )
 

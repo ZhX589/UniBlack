@@ -13,6 +13,10 @@
 
 `go test ./internal/config ./internal/db -count=1`、`go test ./...`、`go vet ./...`、`go build -o /tmp/uniblack-audit ./cmd/server` 全部退出码 0；`git diff --check` 通过。依赖 DATABASE_URL 的集成测试未配置时仍跳过，本批没有前端修改。
 
+## 证据读取边界后续
+
+配置修复已在 `c8016d4` 推送。本轮统一 Evidence service/repository 的 NotFound sentinel，handler 使用 errors.Is 支持包裹错误，使缺失证据详情/删除正确返回404；内部读取错误脱敏500。Event证据缺少授权服务时返回503，不再跳过授权直接披露；空结果安全返回404。新增6场景读取矩阵及1个删除404回归，legacy非Event读取兼容行为保留。裸uploads/S3直链和Case范围读取政策未据此声称解决。全量Go test/vet/build及handler/service race退出码均为0；数据库依赖测试仍未配置时跳过。
+
 ## 边界
 
 生产 Compose 直接将原始 POSTGRES_PASSWORD 插入 URL 的历史问题仍待单独修复；本批没有修改 Compose。更早的健康检查、部署清理文档等未提交修改保留在工作树，不随本批配置修复混入。

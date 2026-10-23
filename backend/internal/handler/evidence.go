@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -80,12 +81,18 @@ func (h *EvidenceHandler) GetEvidence(c echo.Context) error {
 
 	evidence, err := h.evidenceService.GetEvidence(c.Request().Context(), id)
 	if err != nil {
-		if err == service.ErrEvidenceNotFound {
+		if errors.Is(err, service.ErrEvidenceNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "evidence not found"})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to retrieve evidence"})
 	}
-	if evidence.EventID != nil && h.eventService != nil {
+	if evidence == nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "evidence not found"})
+	}
+	if evidence.EventID != nil {
+		if h.eventService == nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "event evidence unavailable"})
+		}
 		userID, _ := c.Get("user_id").(string)
 		roles, _ := c.Get("roles").([]string)
 		if _, err := h.eventService.CanReadEvent(c.Request().Context(), *evidence.EventID, userID, roles); err != nil {
@@ -213,10 +220,10 @@ func (h *EvidenceHandler) DeleteEvidence(c echo.Context) error {
 	roles, _ := c.Get("roles").([]string)
 
 	if err := h.evidenceService.DeleteEvidence(c.Request().Context(), id, userID, roles); err != nil {
-		if err == service.ErrEvidenceNotFound {
+		if errors.Is(err, service.ErrEvidenceNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "evidence not found"})
 		}
-		if err == service.ErrEvidenceAccessDenied {
+		if errors.Is(err, service.ErrEvidenceAccessDenied) {
 			return c.JSON(http.StatusForbidden, map[string]string{"error": "not allowed to delete this evidence"})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to delete evidence"})
