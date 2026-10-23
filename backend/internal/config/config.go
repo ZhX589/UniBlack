@@ -64,8 +64,14 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.RefreshSecret) == "" || c.RefreshSecret == defaultRefreshSecret {
 		return fmt.Errorf("REFRESH_SECRET must be configured in production")
 	}
-	if strings.TrimSpace(c.MinioEndpoint) == "" || strings.TrimSpace(c.MinioAccessKey) == "" || strings.TrimSpace(c.MinioSecretKey) == "" || strings.TrimSpace(c.MinioBucket) == "" || c.MinioEndpoint == defaultMinioEndpoint || c.MinioAccessKey == defaultMinioAccessKey || c.MinioSecretKey == defaultMinioSecretKey || c.MinioBucket == defaultMinioBucket {
+	// Object storage endpoint and bucket are names/locations, not secrets;
+	// they may legitimately retain defaults. Access key and secret key are
+	// credentials and must never be the bundled development defaults.
+	if strings.TrimSpace(c.MinioEndpoint) == "" || strings.TrimSpace(c.MinioAccessKey) == "" || strings.TrimSpace(c.MinioSecretKey) == "" || strings.TrimSpace(c.MinioBucket) == "" {
 		return fmt.Errorf("MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY, and MINIO_BUCKET are required in production")
+	}
+	if c.MinioAccessKey == defaultMinioAccessKey || c.MinioSecretKey == defaultMinioSecretKey {
+		return fmt.Errorf("MINIO_ACCESS_KEY and MINIO_SECRET_KEY must not be the development defaults in production")
 	}
 	return nil
 }
