@@ -60,9 +60,14 @@ func bindPublishRequest(c echo.Context) (service.PublishSubjectRequest, error) {
 	var req service.PublishSubjectRequest
 	if strings.HasPrefix(ct, echo.MIMEApplicationJSON) {
 		decoder := json.NewDecoder(c.Request().Body)
-		if err := decoder.Decode(&req); err != nil {
+		var payload *service.PublishSubjectRequest
+		if err := decoder.Decode(&payload); err != nil {
 			return req, err
 		}
+		if payload == nil {
+			return req, fmt.Errorf("JSON publishing payload must be an object")
+		}
+		req = *payload
 		// Use the same decoder: it may have buffered bytes past the first
 		// value. Only trailing whitespace is valid; a second value is not.
 		var trailing json.RawMessage

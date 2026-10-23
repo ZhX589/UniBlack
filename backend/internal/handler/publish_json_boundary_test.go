@@ -15,6 +15,9 @@ func TestPublishJSONRequiresOneCompletePayload(t *testing.T) {
 		wantError  bool
 	}{
 		{"one object", `{"display_name":"proof"}`, false},
+		{"null is not object", `null`, true},
+		{"array is not object", `[]`, true},
+		{"scalar is not object", `true`, true},
 		{"whitespace", "{} \n\t", false},
 		{"second object", `{} {}`, true},
 		{"second scalar", `{} true`, true},
