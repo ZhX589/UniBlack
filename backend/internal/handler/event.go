@@ -58,11 +58,25 @@ func bindPublishRequest(c echo.Context) (service.PublishSubjectRequest, error) {
 		return bindMultipartPublish(c)
 	}
 	var req service.PublishSubjectRequest
+	if strings.HasPrefix(ct, echo.MIMEApplicationJSON) {
+		decoder := json.NewDecoder(c.Request().Body)
+		if err := decoder.Decode(&req); err != nil {
+			return req, err
+		}
+		// Use the same decoder: it may have buffered bytes past the first
+		// value. Only trailing whitespace is valid; a second value is not.
+		var trailing json.RawMessage
+		if err := decoder.Decode(&trailing); err != io.EOF {
+			if err != nil {
+				return req, err
+			}
+			return req, fmt.Errorf("exactly one JSON payload is required")
+		}
+		return req, nil
+	}
 	if err := c.Bind(&req); err != nil {
 		return req, err
 	}
-	// Echo decodes one JSON value and may stop before EOF. Drain only through
-	// MaxBytesReader so chunked/trailing data cannot bypass the total budget.
 	if _, err := io.Copy(io.Discard, c.Request().Body); err != nil {
 		return req, err
 	}

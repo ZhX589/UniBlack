@@ -29,6 +29,10 @@
 
 服务预算已在 `0dc6dfa` 推送。本轮提前拒绝Content-Length超过72MiB的请求，并在普通JSON绑定后通过MaxBytesReader有界读取剩余请求体，防止首对象后的尾随数据绕过总预算。已知长度和未知长度（模拟chunked）均测试72MiB恰好合法与72MiB+1拒绝；超量发布返回413，且不调用service。使用流式空白生成器，不分配整个72MiB缓冲。定向临界测试、全量Go test/vet/build与handler race均退出码0。此证据不涵盖代理超时/慢速请求策略，也不声称完整multipart与真实网络组合验收。
 
+## 单JSON对象契约（2026-10-24续轮）
+
+HTTP预算修复已在 `0d896ad` 推送。本轮JSON使用同一decoder完成首对象与EOF检查，避免decoder缓冲导致尾随对象/垃圾被忽略；合法尾随空白保留。新增6场景JSON结构契约及2种未知长度超量（首对象内部/首对象后）的413映射回归；之前72MiB精确边界仍通过。全量Go test/vet/build、handler race退出码0。没有修改前端、依赖或部署配置。
+
 ## 边界
 
 生产 Compose 直接将原始 POSTGRES_PASSWORD 插入 URL 的历史问题仍待单独修复；本批没有修改 Compose。更早的健康检查、部署清理文档等未提交修改保留在工作树，不随本批配置修复混入。
